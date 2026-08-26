@@ -6,25 +6,25 @@
 import {
   creerCompte, armer, signalS1, signalS2, attesterDeces, demarrerPause,
   changerCadence, tick, prochainesEcheances, CADENCES_MOIS, ETATS,
-} from '../src/core/compte.js';
+} from './src/core/compte.js';
 import {
   inviterContact, accepterInvitation, renoncerContact, refuserInvitation, contactsAcceptants,
-} from '../src/core/contacts.js';
+} from './src/core/contacts.js';
 import {
   creerMessage, definirTexte, definirNote, marquerFortImpact, ajouterDestinataire,
   definirSecours, programmerDateFixe, revenirImmediate, sceller,
   demanderPublication, confirmerPublication, revoquerPublication, programmerPublication,
   ETATS_MESSAGE,
-} from '../src/core/message.js';
+} from './src/core/message.js';
 import {
   tickPublications, fileModeration, publicationsEnLigne, deciderModeration,
   signalerDetresse, demanderRetrait, retirerPublication, vuePublique, dateDuePublication,
-} from '../src/core/publication.js';
+} from './src/core/publication.js';
 import {
   demarrerExecution, tickExecution, ouvrirSas, envoyerCode, verifierCode,
   lire, differer, refuser, telecharger, signalerRebond, ETATS_PLI,
-} from '../src/core/execution.js';
-import { ajouterJours, ajouterMois } from '../src/core/horloge.js';
+} from './src/core/execution.js';
+import { ajouterJours, ajouterMois } from './src/core/horloge.js';
 
 const CLE = 'testament.v1';
 let etat;
@@ -134,6 +134,8 @@ const ROUTES = [
   ['#/public', 'Public'],
   ['#/journal', 'Journal'],
 ];
+// Le simulateur du protocole vit à côté de l'application : lien direct, pas une route.
+const LIEN_SIMULATEUR = './demo/';
 
 function route() {
   const h = location.hash || '#/';
@@ -150,7 +152,7 @@ function rendreNav() {
       const actif = h === r || (r !== '#/' && h.startsWith(r)) ? ' class="actif"' : '';
       const pastille = r === '#/plis' && plis ? `<span class="pastille">${plis}</span>` : '';
       return `<a href="${r}"${actif}>${libelle}${pastille}</a>`;
-    }).join('');
+    }).join('') + `<a href="${LIEN_SIMULATEUR}" class="externe">Simulateur du protocole</a>`;
   const chip = document.getElementById('chip-etat');
   chip.textContent = LIBELLE_ETAT[etat.compte.etat] || etat.compte.etat;
   chip.dataset.etat = etat.compte.etat;
@@ -285,9 +287,23 @@ function vueTableau() {
 function vueArmement() {
   const scelles = etat.messages.filter((m) => m.etat === ETATS_MESSAGE.SCELLE).length;
   const pret = scelles >= 1;
+  const vierge = etat.messages.length === 0;
+  const decouverte = vierge ? `
+  <div class="alerte">
+    <b>Première visite ? Tout explorer en trente secondes.</b>
+    <p>Charge un compte d’exemple : deux messages scellés, deux contacts de confiance,
+    une lettre publique programmée. Vous pourrez ensuite faire défiler le temps depuis
+    le banc d’essai, en bas de l’écran, et voir le protocole se dérouler.</p>
+    <div class="actions">
+      <button class="principal" data-action="exemple-rapide">Charger l’exemple et explorer</button>
+      <a class="bouton" href="#/messages">Plutôt écrire mon propre message</a>
+    </div>
+  </div>` : '';
+
   return `
   <h1>Armer votre compte</h1>
   <p class="sous">Tant que le compte n’est pas armé, aucun protocole ne court et rien ne peut être délivré (BR-C-01).</p>
+  ${decouverte}
 
   <div class="alerte">
     <b>Ceci n’est pas un testament au sens juridique.</b>
@@ -761,6 +777,11 @@ const ACTIONS = {
   },
 
   // — messages
+  'exemple-rapide': () => {
+    jeuExemple();
+    agir(() => {}, 'Compte d’exemple chargé. Faites défiler le temps depuis le banc d’essai, en bas.');
+    location.hash = '#/';
+  },
   'nouveau-message': () => {
     const id = 'm' + (etat.messages.length + 1) + '-' + Math.random().toString(36).slice(2, 6);
     etat.messages.push(creerMessage({ id, auteurId: etat.compte.id, titre: 'Nouveau message', at: maintenant() }));

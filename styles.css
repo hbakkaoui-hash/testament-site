@@ -179,3 +179,14 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   font-size:.9rem;
 }
 .notif.erreur { border-left-color:var(--crit); color:var(--crit); }
+
+/* lien vers le simulateur : voisin de l'application, pas une rubrique */
+.barre nav a.externe { color: var(--laiton); border-color: transparent; }
+.barre nav a.externe::after { content: " ↗"; font-size: .8em; }
+.barre nav a.externe:hover { color: var(--accent); }
+
+footer.pied {
+  max-width: 58rem; margin: 0 auto; padding: 2rem 1.5rem 0;
+  color: var(--muted); font-size: .84rem; border-top: 1px solid var(--line);
+}
+footer.pied b { color: var(--ink); }

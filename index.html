@@ -3,59 +3,57 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Testament — démonstration</title>
-<meta name="description" content="Messages posthumes : protocole de preuve de vie, délivrance différée, publication publique. Prototype de démonstration.">
-<meta name="robots" content="noindex">
+<title>Testament</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Marcellus&family=Instrument+Sans:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap">
-<style>
-  :root { --paper:#FAF8F4; --surface:#FFFFFE; --ink:#24272E; --muted:#676B74;
-    --accent:#7E3140; --laiton:#8A6D3F; --line-strong:#CFC8BA; --code-bg:#F1EDE4; }
-  * { box-sizing:border-box; }
-  body { margin:0; background:var(--paper); color:var(--ink); line-height:1.6;
-    font-family:"Instrument Sans","Segoe UI",system-ui,sans-serif; padding:4rem 1.5rem 6rem; }
-  main { max-width:44rem; margin:0 auto; }
-  .eyebrow { font-family:"Spline Sans Mono",monospace; font-size:.7rem; letter-spacing:.18em;
-    text-transform:uppercase; color:var(--laiton); margin-bottom:.8rem; }
-  h1 { font-family:"Marcellus",Georgia,serif; font-weight:400; font-size:clamp(2.2rem,6vw,3.2rem);
-    margin:0 0 .6rem; text-wrap:balance; }
-  .accroche { font-size:1.15rem; color:var(--muted); max-width:38ch; margin:0 0 2.5rem; }
-  .cartes { display:grid; gap:.8rem; grid-template-columns:repeat(auto-fit,minmax(15rem,1fr)); }
-  a.carte { display:block; text-decoration:none; color:inherit; background:var(--surface);
-    border:1px solid var(--line-strong); border-radius:3px; padding:1.2rem 1.3rem; }
-  a.carte:hover { border-color:var(--accent); }
-  a.carte b { font-family:"Marcellus",Georgia,serif; font-weight:400; font-size:1.2rem;
-    display:block; margin-bottom:.3rem; color:var(--accent); }
-  a.carte span { color:var(--muted); font-size:.92rem; }
-  .note { margin-top:2.5rem; padding:1rem 1.2rem; background:var(--code-bg);
-    border-radius:3px; font-size:.9rem; color:var(--muted); }
-  .note b { color:var(--ink); }
-</style>
+<link rel="stylesheet" href="./styles.css">
 </head>
 <body>
-<main>
-  <p class="eyebrow">Prototype · démonstration publique</p>
-  <h1>Testament</h1>
-  <p class="accroche">Des mots écrits de son vivant, délivrés après une disparition
-  constatée par un protocole — jamais par un simple compteur d’inactivité.</p>
 
-  <div class="cartes">
-    <a class="carte" href="./app/">
-      <b>L’application</b>
-      <span>Armer un compte, écrire, désigner des contacts de confiance, voir ce qui
-      partira et quand. Un banc d’essai permet d’avancer le temps de plusieurs mois.</span>
-    </a>
-    <a class="carte" href="./demo/">
-      <b>Le simulateur du protocole</b>
-      <span>La machine à états seule : sollicitations, enquête, quorum, période de grâce,
-      exécution — avec le journal de chaque décision.</span>
-    </a>
+<header class="barre">
+  <a class="marque" href="#/">Testament</a>
+  <nav id="nav"></nav>
+  <span class="etat-compte"><span class="chip" id="chip-etat">—</span></span>
+</header>
+
+<main id="vue"></main>
+
+<footer class="pied">
+  <p><b>Prototype de démonstration.</b> Vos données restent dans ce navigateur :
+  rien n’est transmis, aucun message n’est réellement délivré, aucun contact n’est
+  contacté. Ceci n’est pas un testament au sens juridique — aucune disposition
+  patrimoniale, aucune valeur successorale.</p>
+</footer>
+
+<div class="banc" id="banc">
+  <div class="banc-tete">
+    <b>Banc d'essai</b>
+    <span id="banc-date">—</span>
+    <button class="lien" id="banc-repli">réduire</button>
   </div>
+  <div class="banc-corps" id="banc-corps">
+    <div class="banc-groupe">
+      <span class="banc-lib">Temps</span>
+      <button data-temps="1">+1 j</button>
+      <button data-temps="7">+7 j</button>
+      <button data-temps="30">+1 mois</button>
+      <button data-temps="90">+3 mois</button>
+      <button data-temps="365">+1 an</button>
+    </div>
+    <div class="banc-groupe">
+      <span class="banc-lib">Signaux</span>
+      <button data-banc="s2">Email ouvert (S2)</button>
+      <button data-banc="attester">Un contact atteste</button>
+    </div>
+    <div class="banc-groupe">
+      <span class="banc-lib">Données</span>
+      <button data-banc="exemple">Jeu d'exemple</button>
+      <button data-banc="raz">Tout effacer</button>
+    </div>
+  </div>
+</div>
 
-  <p class="note"><b>Prototype de démonstration.</b> Les données restent dans votre
-  navigateur, rien n’est envoyé nulle part, aucun message n’est réellement délivré.
-  Ceci n’est pas un testament au sens juridique : aucune disposition patrimoniale,
-  aucune valeur successorale. Le code source et la spécification fonctionnelle ne sont
-  pas publics.</p>
-</main>
+<div class="notif" id="notif" hidden></div>
+
+<script type="module" src="./app.js"></script>
 </body>
 </html>
