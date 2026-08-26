@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Testament</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Marcellus&family=Instrument+Sans:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+
+<header class="barre">
+  <a class="marque" href="#/">Testament</a>
+  <nav id="nav"></nav>
+  <span class="etat-compte"><span class="chip" id="chip-etat">—</span></span>
+</header>
+
+<main id="vue"></main>
+
+<div class="banc" id="banc">
+  <div class="banc-tete">
+    <b>Banc d'essai</b>
+    <span id="banc-date">—</span>
+    <button class="lien" id="banc-repli">réduire</button>
+  </div>
+  <div class="banc-corps" id="banc-corps">
+    <div class="banc-groupe">
+      <span class="banc-lib">Temps</span>
+      <button data-temps="1">+1 j</button>
+      <button data-temps="7">+7 j</button>
+      <button data-temps="30">+1 mois</button>
+      <button data-temps="90">+3 mois</button>
+      <button data-temps="365">+1 an</button>
+    </div>
+    <div class="banc-groupe">
+      <span class="banc-lib">Signaux</span>
+      <button data-banc="s2">Email ouvert (S2)</button>
+      <button data-banc="attester">Un contact atteste</button>
+    </div>
+    <div class="banc-groupe">
+      <span class="banc-lib">Données</span>
+      <button data-banc="exemple">Jeu d'exemple</button>
+      <button data-banc="raz">Tout effacer</button>
+    </div>
+  </div>
+</div>
+
+<div class="notif" id="notif" hidden></div>
+
+<script type="module" src="./app.js"></script>
+</body>
+</html>

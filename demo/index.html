@@ -1,0 +1,1653 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Testament · Simulateur du protocole (autonome)</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Marcellus&family=Instrument+Sans:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --paper: #FAF8F4;
+    --surface: #FFFFFE;
+    --ink: #24272E;
+    --muted: #676B74;
+    --accent: #7E3140;
+    --laiton: #8A6D3F;
+    --line: #E5E0D6;
+    --line-strong: #CFC8BA;
+    --ok: #2E6B4F;
+    --warn: #8A5B1E;
+    --crit: #8C2F2F;
+    --code-bg: #F1EDE4;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: "Instrument Sans", "Segoe UI", system-ui, sans-serif;
+    font-size: 15px; line-height: 1.55; padding: 1.5rem 1.25rem 4rem;
+  }
+  .wrap { max-width: 64rem; margin: 0 auto; }
+  header { display: flex; align-items: baseline; gap: 1rem; flex-wrap: wrap; border-bottom: 2px solid var(--ink); padding-bottom: .7rem; margin-bottom: 1.2rem; }
+  h1 { font-family: "Marcellus", Georgia, serif; font-weight: 400; font-size: 1.7rem; margin: 0; }
+  .sous { color: var(--muted); font-size: .9rem; }
+  .date { margin-left: auto; font-family: "Spline Sans Mono", monospace; font-size: .95rem; color: var(--laiton); }
+
+  .grille { display: grid; grid-template-columns: 18rem 1fr; gap: 1.2rem; align-items: start; }
+  @media (max-width: 780px) { .grille { grid-template-columns: 1fr; } }
+
+  .carte { background: var(--surface); border: 1px solid var(--line-strong); border-radius: 3px; padding: 1rem 1.1rem; }
+  .carte h2 { font-family: "Spline Sans Mono", monospace; font-size: .7rem; letter-spacing: .16em; text-transform: uppercase; color: var(--laiton); margin: 0 0 .7rem; font-weight: 500; }
+  .carte + .carte { margin-top: 1.2rem; }
+
+  .btns { display: flex; flex-wrap: wrap; gap: .45rem; }
+  button {
+    font: inherit; font-size: .87rem; cursor: pointer;
+    background: var(--paper); color: var(--ink);
+    border: 1px solid var(--line-strong); border-radius: 3px; padding: .4rem .75rem;
+  }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  button.temps { font-family: "Spline Sans Mono", monospace; }
+
+  .etat-ligne { display: flex; align-items: center; gap: .7rem; margin-bottom: .6rem; flex-wrap: wrap; }
+  .chip {
+    font-family: "Spline Sans Mono", monospace; font-size: .8rem; letter-spacing: .08em;
+    padding: .25rem .7rem; border-radius: 3px; border: 1px solid var(--line-strong); background: var(--code-bg);
+  }
+  .chip[data-etat="ARME"] { color: var(--ok); border-color: var(--ok); background: #E3EFE8; }
+  .chip[data-etat="SOLLICITATION"], .chip[data-etat="ENQUETE"], .chip[data-etat="VEILLE_LONGUE"] { color: var(--warn); border-color: var(--warn); background: #F5EBDB; }
+  .chip[data-etat="PRESUME_DECEDE"], .chip[data-etat="EN_EXECUTION"], .chip[data-etat="EXECUTE"], .chip[data-etat="EN_LIQUIDATION"], .chip[data-etat="SUPPRIME"] { color: var(--crit); border-color: var(--crit); background: #F5E3E1; }
+  .chip[data-etat="EN_PAUSE"], .chip[data-etat="NOUVEAU"], .chip[data-etat="DESARME"] { color: #33586E; border-color: #33586E; background: #E2EBF1; }
+  .kv { color: var(--muted); font-size: .88rem; }
+  .kv b { color: var(--ink); font-weight: 500; font-family: "Spline Sans Mono", monospace; font-size: .85rem; }
+
+  #echeances { display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); gap: .4rem; margin-top: .6rem; }
+  .ech { display: flex; justify-content: space-between; gap: .6rem; border: 1px solid var(--line); border-radius: 3px; padding: .3rem .6rem; font-size: .82rem; }
+  .ech b { font-family: "Spline Sans Mono", monospace; font-weight: 500; }
+  .ech.passee { opacity: .45; text-decoration: line-through; }
+
+  .pli { border: 1px solid var(--line); border-radius: 3px; padding: .55rem .75rem; margin-bottom: .5rem; }
+  .pli-tete { display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap; margin-bottom: .45rem; }
+  .pli-meta { color: var(--muted); font-size: .8rem; }
+  .pli-etat {
+    font-family: "Spline Sans Mono", monospace; font-size: .72rem; letter-spacing: .06em;
+    padding: .1rem .45rem; border-radius: 2px; border: 1px solid var(--line-strong); background: var(--code-bg);
+  }
+  .pli-etat[data-etat="LU"] { color: var(--ok); border-color: var(--ok); background: #E3EFE8; }
+  .pli-etat[data-etat="NOTIFIE"], .pli-etat[data-etat="SAS_OUVERT"] { color: var(--warn); border-color: var(--warn); background: #F5EBDB; }
+  .pli-etat[data-etat="REFUSE"], .pli-etat[data-etat="NON_DELIVRE"], .pli-etat[data-etat="EXPIRE"], .pli-etat[data-etat="EFFACE"] { color: var(--crit); border-color: var(--crit); background: #F5E3E1; }
+  .pli .btns button { font-size: .8rem; padding: .25rem .55rem; }
+
+  #msg { margin: 1rem 0 0; padding: .6rem .9rem; border-radius: 3px; border: 1px solid var(--line-strong); background: var(--code-bg); font-size: .88rem; min-height: 2.3rem; }
+  #msg.erreur { border-color: var(--crit); color: var(--crit); background: #F5E3E1; }
+
+  #journal { list-style: none; margin: .4rem 0 0; padding: 0; max-height: 24rem; overflow-y: auto; }
+  #journal li { display: flex; gap: .8rem; align-items: baseline; padding: .35rem 0; border-bottom: 1px solid var(--line); font-size: .84rem; }
+  .jat { font-family: "Spline Sans Mono", monospace; color: var(--laiton); flex: none; }
+  .jtype { font-weight: 600; flex: none; }
+  .jdata { color: var(--muted); font-family: "Spline Sans Mono", monospace; font-size: .75rem; overflow-wrap: anywhere; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Testament</h1>
+    <span class="sous">Simulateur du protocole de preuve de vie — spécification v0.1, sections 4 et 5</span>
+    <span class="date">Date simulée : <span id="date">—</span></span>
+  </header>
+
+  <div class="grille">
+    <div>
+      <div class="carte">
+        <h2>Temps simulé</h2>
+        <div class="btns">
+          <button class="temps" id="btn-7j">+7 jours</button>
+          <button class="temps" id="btn-15j">+15 jours</button>
+          <button class="temps" id="btn-1m">+1 mois</button>
+          <button class="temps" id="btn-3m">+3 mois</button>
+        </div>
+      </div>
+      <div class="carte">
+        <h2>Testateur</h2>
+        <div class="btns">
+          <button id="btn-s1">Check-in S1 (lien signé)</button>
+          <button id="btn-s2">Ouvre l'email (S2)</button>
+          <button id="btn-s2exp">« Je suis vivant » (S2)</button>
+          <button id="btn-pause">Absence programmée 3 mois</button>
+        </div>
+      </div>
+      <div class="carte">
+        <h2>Contacts de confiance</h2>
+        <div class="btns">
+          <button id="btn-vivant">Awa : « il va bien »</button>
+          <button id="btn-awa">Awa atteste (avec pièce)</button>
+          <button id="btn-bilal">Bilal atteste</button>
+        </div>
+      </div>
+      <div class="carte">
+        <h2>Repartir de zéro</h2>
+        <div class="btns">
+          <button id="btn-reset">Réinitialiser la simulation</button>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="carte">
+        <h2>État du compte</h2>
+        <div class="etat-ligne">
+          <span class="chip" id="etat" data-etat="ARME">ARME</span>
+          <span class="kv">dernière preuve de vie S1 : <b id="activite">—</b></span>
+        </div>
+        <div id="echeances"></div>
+        <div id="msg">Chargement…</div>
+      </div>
+      <div class="carte" id="carte-plis" hidden>
+        <h2>Exécution — plis destinataires (module D)</h2>
+        <div id="plis"></div>
+      </div>
+      <div class="carte">
+        <h2>Journal (PD-7, BR-C-10)</h2>
+        <ul id="journal"></ul>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+'use strict';
+// ——— src/core/horloge.js ———
+// Horloge injectable — aucune fonction du domaine n'appelle Date.now().
+// Le temps est toujours passé en paramètre (ts en millisecondes UTC).
+
+function ajouterJours(ts, jours) {
+  return ts + jours * 86_400_000;
+}
+
+// Arithmétique calendaire réelle : 31 janv + 1 mois → 28/29 févr (jour clampé).
+function ajouterMois(ts, mois) {
+  const d = new Date(ts);
+  const cible = new Date(Date.UTC(
+    d.getUTCFullYear(), d.getUTCMonth() + mois, 1,
+    d.getUTCHours(), d.getUTCMinutes(), d.getUTCSeconds(), d.getUTCMilliseconds(),
+  ));
+  const dernierJour = new Date(Date.UTC(cible.getUTCFullYear(), cible.getUTCMonth() + 1, 0)).getUTCDate();
+  cible.setUTCDate(Math.min(d.getUTCDate(), dernierJour));
+  return cible.getTime();
+}
+
+function creerHorloge(departISO = '2026-01-01T00:00:00Z') {
+  let t = Date.parse(departISO);
+  return {
+    maintenant: () => t,
+    avancerJours(jours) { t = ajouterJours(t, jours); return t; },
+    avancerMois(mois) { t = ajouterMois(t, mois); return t; },
+    allerA(iso) { t = Date.parse(iso); return t; },
+  };
+}
+
+// ——— src/core/journal.js ———
+// Journal chaîné (RG-C8) : chaque entrée porte l'empreinte de la précédente,
+// toute falsification a posteriori casse la chaîne.
+// La fonction de hachage est injectable ; le défaut (djb2) n'est PAS
+// cryptographique — côté serveur, il sera remplacé par SHA-256.
+
+function hachageDefaut(chaine) {
+  let h = 5381;
+  for (let i = 0; i < chaine.length; i++) {
+    h = ((h << 5) + h + chaine.charCodeAt(i)) | 0;
+  }
+  return (h >>> 0).toString(16).padStart(8, '0');
+}
+
+function empreinteDe(precedent, entree, hachage) {
+  return hachage(precedent + JSON.stringify([entree.seq, entree.at, entree.type, entree.donnees]));
+}
+
+function consigner(journal, { at, type, donnees = {} }, hachage = hachageDefaut) {
+  const precedent = journal.length ? journal[journal.length - 1].empreinte : 'GENESE';
+  const entree = { seq: journal.length, at, type, donnees, precedent };
+  entree.empreinte = empreinteDe(precedent, entree, hachage);
+  journal.push(entree);
+  return entree;
+}
+
+function verifierJournal(journal, hachage = hachageDefaut) {
+  let precedent = 'GENESE';
+  for (const entree of journal) {
+    if (entree.precedent !== precedent) return { valide: false, seq: entree.seq };
+    if (empreinteDe(precedent, entree, hachage) !== entree.empreinte) return { valide: false, seq: entree.seq };
+    precedent = entree.empreinte;
+  }
+  return { valide: true };
+}
+
+// ——— src/core/contacts.js ———
+// Contacts de confiance — BR-A-11 à BR-A-17 de la spécification v0.1.
+// Acceptation explicite, renonciation libre, 5 au maximum. Un contact n'a
+// jamais accès aux contenus ni aux destinataires — le module n'expose
+// d'ailleurs aucune API dans ce sens (BR-A-12).
+
+
+const CONTACTS_MAX = 5; // BR-A-15
+
+function noterCompte(compte, at, type, donnees) {
+  consigner(compte.journal, { at, type, donnees }, compte._hachage);
+}
+
+function contactsAcceptants(compte) {
+  return compte.contacts.filter((c) => c.statut === 'ACCEPTANT');
+}
+
+function inviterContact(compte, { id, nom, email, at }) {
+  const comptabilises = compte.contacts.filter((c) => c.statut !== 'RENONCE');
+  if (comptabilises.length >= CONTACTS_MAX) throw new Error('5 contacts de confiance maximum (BR-A-15)');
+  if (compte.contacts.some((c) => c.id === id && c.statut !== 'RENONCE')) throw new Error('contact déjà invité');
+  compte.contacts.push({ id, nom, email, statut: 'EN_ATTENTE', inviteLe: at });
+  noterCompte(compte, at, 'CONTACT_INVITE', { id });
+}
+
+// BR-A-11 : tant qu'il n'a pas accepté, il n'est pas comptabilisé dans le quorum.
+function accepterInvitation(compte, { id, at }) {
+  const contact = compte.contacts.find((c) => c.id === id && c.statut === 'EN_ATTENTE');
+  if (!contact) throw new Error('invitation introuvable');
+  contact.statut = 'ACCEPTANT';
+  contact.accepteLe = at;
+  noterCompte(compte, at, 'CONTACT_ACCEPTANT', { id });
+}
+
+function refuserInvitation(compte, { id, at }) {
+  const index = compte.contacts.findIndex((c) => c.id === id && c.statut === 'EN_ATTENTE');
+  if (index === -1) throw new Error('invitation introuvable');
+  compte.contacts.splice(index, 1); // purge immédiate des données du tiers
+  noterCompte(compte, at, 'CONTACT_REFUS_PURGE', { id });
+}
+
+// BR-A-13 : renonciation à tout moment, sans justification, testateur informé.
+function renoncerContact(compte, { id, at }) {
+  const contact = compte.contacts.find((c) => c.id === id && c.statut === 'ACCEPTANT');
+  if (!contact) throw new Error('contact acceptant introuvable');
+  contact.statut = 'RENONCE';
+  contact.renonceLe = at;
+  noterCompte(compte, at, 'CONTACT_RENONCE', { id, testateurNotifie: true });
+}
+
+// ——— src/core/compte.js ———
+// Machine à états du compte — implémente le protocole de preuve de vie de la
+// spécification v0.1 (docs/specifications-v0.1.md), sections 4.2 à 4.4.
+// Les codes BR-* cités renvoient aux règles métier du document de référence.
+// Tout le temps est injecté (paramètre `at`) ; toute transition est journalisée.
+
+
+const ETATS = Object.freeze({
+  NOUVEAU: 'NOUVEAU',
+  ARME: 'ARME',
+  EN_PAUSE: 'EN_PAUSE',
+  SOLLICITATION: 'SOLLICITATION',
+  ENQUETE: 'ENQUETE',
+  VEILLE_LONGUE: 'VEILLE_LONGUE',
+  PRESUME_DECEDE: 'PRESUME_DECEDE',
+  EN_EXECUTION: 'EN_EXECUTION',
+  EXECUTE: 'EXECUTE',
+  EN_LIQUIDATION: 'EN_LIQUIDATION',
+  DESARME: 'DESARME',
+  SUPPRIME: 'SUPPRIME',
+});
+
+const CADENCES_MOIS = [1, 3, 6, 12];          // 4.2 — cadence de check-in
+const OFFSETS_SOLLICITATIONS = [0, 14, 28, 42, 56];  // Phase 1 : J+0 … J+56
+const ENQUETE_JOUR = 56;                             // Phase 2
+const DECISION_JOUR = 86;                            // Phase 3
+const S2_DECALAGE_JOURS = 30;                        // BR-C-04
+const VIVANT_SUSPENSION_JOURS = 60;                  // Phase 2, réponse « il va bien »
+const GRACE_JOURS = 90;                              // BR-C-06 — non réductible
+const PLANCHER_INACTIVITE_MOIS = 18;                 // BR-C-05
+const VEILLE_REENQUETE_MOIS = 6;                     // Phase 3, retour en veille
+const VEILLE_ENQUETE_JOURS = 30;
+const VERIF_RENFORCEE_JOURS = 30;                    // chemin accéléré
+const VERIF_RENFORCEE_PAS_JOURS = 5;
+const LIQUIDATION_JOURS = 90;                        // BR-E-01
+const PAUSE_MAX_MOIS = 12;                           // BR-C-07
+const PAUSE_RENOUVELLEMENTS_MAX = 1;
+const ATTESTATION_INTERVALLE_MOIS = 12;              // BR-C-14
+const CANAUX = ['email', 'email2', 'push', 'sms'];
+
+const SIGNAUX_S1 = new Set(['CONNEXION', 'LIEN_SIGNE', 'ACTION_APP']); // S1 — preuve forte
+const ETATS_IRREVERSIBLES = [ETATS.EN_EXECUTION, ETATS.EXECUTE, ETATS.EN_LIQUIDATION, ETATS.SUPPRIME];
+const ETATS_PROTOCOLE = [ETATS.ARME, ETATS.SOLLICITATION, ETATS.ENQUETE, ETATS.VEILLE_LONGUE, ETATS.PRESUME_DECEDE];
+
+function creerCompte({ id, at, cadenceMois = 6, hachage } = {}) {
+  if (!CADENCES_MOIS.includes(cadenceMois)) {
+    throw new Error(`cadence de check-in parmi ${CADENCES_MOIS.join('/')} mois (4.2)`);
+  }
+  const compte = {
+    id,
+    creeLe: at,
+    etat: ETATS.NOUVEAU,
+    regles: { cadenceMois },
+    armement: null,        // { at, canauxVerifies, messagesScelles }
+    derniereS1: null,
+    vivantSuccessifs: 0,   // réponses « il va bien » sans S1 entre elles
+    cycle: null,           // { debut, decalage, s2Utilise, relances, enqueteOuverte }
+    veille: null,          // { ouverteLe, prochaineEnquete, enquete: {decisionAt}|null }
+    verifRenforcee: null,  // { debut, fin, relancesEmises, signal }
+    presomption: null,     // { at, voie, graceFinAt, notifsEmises }
+    pause: null,           // { jusquau, renouvellements }
+    liquidation: null,     // { finAt }
+    attestations: [],      // { contactId, piece, at, invalideeAt }
+    contacts: [],
+    journal: [],
+    _hachage: hachage,
+  };
+  noterCompte(compte, at, 'COMPTE_CREE', { cadenceMois });
+  return compte;
+}
+
+function noterCompte(compte, at, type, donnees = {}) {
+  consigner(compte.journal, { at, type, donnees }, compte._hachage);
+}
+
+// ————————————————————————————————————————————————— armement (BR-C-01/02)
+
+function armer(compte, { at, auth = {}, canauxVerifies = 0, messagesScelles = 0, accuseLecture = false }) {
+  if (compte.etat !== ETATS.NOUVEAU && compte.etat !== ETATS.DESARME) {
+    throw new Error('armement possible depuis un compte nouveau ou désarmé');
+  }
+  if (auth.deuxFacteurs !== true) throw new Error('armement : 2FA active requise (BR-C-01, BR-A-02)');
+  if (canauxVerifies < 2) throw new Error('armement : deux canaux vérifiés distincts requis (BR-A-03)');
+  if (messagesScelles < 1) throw new Error('armement : au moins un message scellé requis (BR-C-01)');
+  if (accuseLecture !== true) throw new Error('armement : accusé de lecture du protocole requis (BR-C-02)');
+  compte.etat = ETATS.ARME;
+  compte.armement = { at, canauxVerifies, messagesScelles };
+  compte.derniereS1 = at;
+  noterCompte(compte, at, 'COMPTE_ARME', { cadenceMois: compte.regles.cadenceMois, canauxVerifies, messagesScelles, accuseLectureAt: at });
+}
+
+function desarmer(compte, { at, auth = {} }) {
+  if (compte.etat !== ETATS.ARME) throw new Error('désarmement possible depuis un compte armé serein');
+  if (auth.deuxFacteurs !== true) throw new Error('désarmement : 2FA requise (BR-A-06)');
+  compte.etat = ETATS.DESARME;
+  noterCompte(compte, at, 'COMPTE_DESARME', {});
+}
+
+// Raccourcir la cadence est immédiat ; l'allonger exige une 2FA (4.2).
+function changerCadence(compte, { cadenceMois, at, auth = {} }) {
+  if (!CADENCES_MOIS.includes(cadenceMois)) {
+    throw new Error(`cadence de check-in parmi ${CADENCES_MOIS.join('/')} mois (4.2)`);
+  }
+  if (cadenceMois > compte.regles.cadenceMois && auth.deuxFacteurs !== true) {
+    throw new Error('allonger la cadence exige une confirmation 2FA (4.2)');
+  }
+  const avant = compte.regles.cadenceMois;
+  compte.regles.cadenceMois = cadenceMois;
+  noterCompte(compte, at, 'CADENCE_MODIFIEE', { avant, apres: cadenceMois });
+}
+
+// ————————————————————————————————————————————————— signaux (4.2, BR-C-03/04)
+
+// S1 — preuve de vie forte : réinitialise tout, sans exception (PD-3, BR-C-03).
+function signalS1(compte, { type = 'CONNEXION', at }) {
+  if (!SIGNAUX_S1.has(type)) throw new Error(`signal S1 parmi : ${[...SIGNAUX_S1].join(', ')}`);
+  if (ETATS_IRREVERSIBLES.includes(compte.etat)) {
+    throw new Error("l'exécution est irréversible : aucun signal ne l'arrête (BR-D-01)");
+  }
+  const annulePresomption = compte.etat === ETATS.PRESUME_DECEDE;
+  if (compte.pause) {
+    compte.pause = null;
+    noterCompte(compte, at, 'PAUSE_INTERROMPUE', {});
+  }
+  if (annulePresomption) {
+    noterCompte(compte, at, 'PRESOMPTION_ANNULEE', { par: 'S1' });
+    communiquerAttestants(compte, at); // BR-A-17
+  }
+  invaliderAttestations(compte, at);
+  compte.vivantSuccessifs = 0;
+  compte.cycle = null;
+  compte.veille = null;
+  compte.verifRenforcee = null;
+  compte.presomption = null;
+  if (ETATS_PROTOCOLE.includes(compte.etat) || compte.etat === ETATS.EN_PAUSE) {
+    compte.etat = ETATS.ARME;
+  }
+  compte.derniereS1 = at;
+  noterCompte(compte, at, 'SIGNE_DE_VIE_S1', { type });
+  return { compteurReinitialise: true, presomptionAnnulee: annulePresomption };
+}
+
+// S2 — signal faible : ne réinitialise jamais le compteur (BR-C-04).
+function signalS2(compte, { type = 'OUVERTURE_EMAIL', at, explicite = false }) {
+  if (ETATS_IRREVERSIBLES.includes(compte.etat)) {
+    throw new Error("l'exécution est irréversible : aucun signal ne l'arrête (BR-D-01)");
+  }
+  if (compte.etat === ETATS.PRESUME_DECEDE) {
+    if (!explicite) {
+      noterCompte(compte, at, 'S2_RECU', { type, effet: 'AUCUN' });
+      return { effet: 'AUCUN' };
+    }
+    // Phase 4 : un S2 explicite (« je suis vivant ») annule la présomption,
+    // mais ne réinitialise pas le compteur : un check-in S1 est redemandé.
+    noterCompte(compte, at, 'PRESOMPTION_ANNULEE', { par: 'S2_EXPLICITE' });
+    communiquerAttestants(compte, at); // BR-A-17
+    invaliderAttestations(compte, at);
+    compte.presomption = null;
+    ouvrirSollicitation(compte, at, at, 'APRES_ANNULATION_S2');
+    return { effet: 'PRESOMPTION_ANNULEE' };
+  }
+  if (compte.verifRenforcee) {
+    compte.verifRenforcee.signal = true; // brise le « silence total » du chemin accéléré
+    noterCompte(compte, at, 'S2_RECU', { type, effet: 'VERIFICATION_INTERROMPUE' });
+    return { effet: 'VERIFICATION_INTERROMPUE' };
+  }
+  if (compte.cycle && !compte.cycle.s2Utilise) {
+    compte.cycle.s2Utilise = true;
+    compte.cycle.decalage += S2_DECALAGE_JOURS;
+    noterCompte(compte, at, 'S2_DECALAGE', { type, jours: S2_DECALAGE_JOURS });
+    return { effet: 'DECALAGE_30_JOURS' };
+  }
+  noterCompte(compte, at, 'S2_RECU', { type, effet: 'AUCUN' });
+  return { effet: 'AUCUN' };
+}
+
+function invaliderAttestations(compte, at) {
+  for (const a of compte.attestations) {
+    if (!a.invalideeAt) a.invalideeAt = at;
+  }
+}
+
+// BR-A-17 : en cas de réactivation, les attestants sont nommés au testateur.
+function communiquerAttestants(compte, at) {
+  const attestants = compte.attestations.filter((a) => !a.invalideeAt).map((a) => a.contactId);
+  if (attestants.length) noterCompte(compte, at, 'ATTESTANTS_COMMUNIQUES', { contacts: attestants });
+}
+
+// ————————————————————————————————————————————————— S3 : attestations (BR-C-08/09/14)
+
+function attesterDeces(compte, { contactId, piece = null, at }) {
+  const contact = contactsAcceptants(compte).find((c) => c.id === contactId);
+  if (!contact) throw new Error('seul un contact de confiance acceptant peut attester (BR-A-11)');
+  if (ETATS_IRREVERSIBLES.includes(compte.etat)) throw new Error('compte déjà en exécution');
+  if (compte.etat === ETATS.NOUVEAU || compte.etat === ETATS.DESARME) {
+    throw new Error('compte non armé : le protocole ne court pas (BR-C-01)');
+  }
+  const derniere = compte.attestations.filter((a) => a.contactId === contactId).at(-1);
+  if (derniere && at < ajouterMois(derniere.at, ATTESTATION_INTERVALLE_MOIS)) {
+    throw new Error('une attestation par contact et par période de 12 mois (BR-C-14)');
+  }
+  compte.attestations.push({ contactId, piece, at, invalideeAt: null });
+  noterCompte(compte, at, 'ATTESTATION_RECUE', { contactId, piece: Boolean(piece) });
+
+  // Chemin accéléré (4.2) : attestation proactive hors enquête.
+  if (compte.etat === ETATS.ARME || compte.etat === ETATS.SOLLICITATION || compte.etat === ETATS.EN_PAUSE) {
+    if (quorumAtteint(compte)) {
+      compte.pause = null;
+      compte.cycle = null;
+      compte.verifRenforcee = { debut: at, fin: ajouterJours(at, VERIF_RENFORCEE_JOURS), relancesEmises: 0, signal: false };
+      compte.etat = ETATS.ENQUETE;
+      noterCompte(compte, at, 'VERIFICATION_RENFORCEE_OUVERTE', { fin: compte.verifRenforcee.fin });
+    } else if (compte.etat === ETATS.ARME) {
+      // BR-C-09 : sans quorum possible, l'attestation ne fait qu'accélérer la Phase 1.
+      ouvrirSollicitation(compte, at, at, 'ATTESTATION_SANS_QUORUM');
+    }
+  }
+  // En enquête ou en veille : comptée au point de décision. En grâce : sans
+  // effet, la grâce est non réductible (BR-C-06).
+}
+
+// Réponse d'un contact à l'enquête de Phase 2 (4.2).
+function repondreEnquete(compte, { contactId, reponse, piece = null, at }) {
+  const contact = contactsAcceptants(compte).find((c) => c.id === contactId);
+  if (!contact) throw new Error('seul un contact de confiance acceptant peut répondre (BR-A-11)');
+  if (reponse === 'DECEDE') {
+    attesterDeces(compte, { contactId, piece, at });
+    return;
+  }
+  const enqueteOuverte = (compte.cycle && compte.cycle.enqueteOuverte) || (compte.veille && compte.veille.enquete) || compte.verifRenforcee;
+  if (!enqueteOuverte) throw new Error('aucune enquête en cours');
+  if (reponse === 'NSP') {
+    noterCompte(compte, at, 'REPONSE_ENQUETE', { contactId, reponse, effet: 'AUCUN' });
+    return;
+  }
+  if (reponse !== 'VIVANT') throw new Error('réponse parmi : VIVANT, DECEDE, NSP');
+  // « Il va bien » : suspension de 60 jours ; deux réponses successives sans
+  // aucun signal S1 ne suspendent plus (4.2).
+  if (compte.vivantSuccessifs >= 1) {
+    compte.vivantSuccessifs += 1;
+    noterCompte(compte, at, 'REPONSE_ENQUETE', { contactId, reponse, effet: 'AUCUN_DEUX_SUCCESSIVES' });
+    return;
+  }
+  compte.vivantSuccessifs += 1;
+  if (compte.verifRenforcee) {
+    compte.verifRenforcee.signal = true;
+    noterCompte(compte, at, 'REPONSE_ENQUETE', { contactId, reponse, effet: 'VERIFICATION_INTERROMPUE' });
+    return;
+  }
+  if (compte.cycle) compte.cycle.decalage += VIVANT_SUSPENSION_JOURS;
+  if (compte.veille && compte.veille.enquete) {
+    compte.veille.enquete.decisionAt = ajouterJours(compte.veille.enquete.decisionAt, VIVANT_SUSPENSION_JOURS);
+  }
+  noterCompte(compte, at, 'REPONSE_ENQUETE', { contactId, reponse, effet: `SUSPENSION_${VIVANT_SUSPENSION_JOURS}_JOURS` });
+}
+
+// Quorum (BR-A-14, BR-C-08) : 2 attestations d'acceptants distincts, ou une
+// seule avec pièce lorsqu'un seul contact est acceptant.
+function quorumAtteint(compte) {
+  const acceptants = contactsAcceptants(compte);
+  const valides = compte.attestations.filter(
+    (a) => !a.invalideeAt && acceptants.some((c) => c.id === a.contactId),
+  );
+  const distincts = new Set(valides.map((a) => a.contactId));
+  if (distincts.size >= 2) return true;
+  if (acceptants.length === 1 && valides.some((a) => a.piece)) return true;
+  return false;
+}
+
+// ————————————————————————————————————————————————— pause (BR-C-07)
+
+function demarrerPause(compte, { jusquau, at, auth = {} }) {
+  if (compte.etat !== ETATS.ARME) throw new Error('absence programmée possible depuis un compte armé serein (BR-C-07)');
+  if (auth.deuxFacteurs !== true) throw new Error('absence programmée : 2FA requise (BR-C-07)');
+  if (jusquau <= at) throw new Error('échéance de pause dans le passé');
+  if (jusquau > ajouterMois(at, PAUSE_MAX_MOIS)) throw new Error('absence programmée de 1 à 12 mois (BR-C-07)');
+  compte.etat = ETATS.EN_PAUSE;
+  compte.pause = { jusquau, renouvellements: 0 };
+  noterCompte(compte, at, 'PAUSE_DEMARREE', { jusquau });
+}
+
+function renouvelerPause(compte, { jusquau, at, auth = {} }) {
+  if (compte.etat !== ETATS.EN_PAUSE) throw new Error('aucune pause en cours');
+  if (auth.deuxFacteurs !== true) throw new Error('absence programmée : 2FA requise (BR-C-07)');
+  if (compte.pause.renouvellements >= PAUSE_RENOUVELLEMENTS_MAX) {
+    throw new Error('absence programmée renouvelable une seule fois (BR-C-07)');
+  }
+  if (jusquau <= compte.pause.jusquau) throw new Error('le renouvellement doit prolonger la pause');
+  if (jusquau > ajouterMois(at, PAUSE_MAX_MOIS)) throw new Error('absence programmée de 1 à 12 mois (BR-C-07)');
+  compte.pause = { jusquau, renouvellements: compte.pause.renouvellements + 1 };
+  noterCompte(compte, at, 'PAUSE_RENOUVELEE', { jusquau });
+}
+
+// ————————————————————————————————————————————————— incident (BR-C-13)
+
+function decalerCompteurs(compte, { jours, at, motif = 'INCIDENT_SERVICE' }) {
+  if (jours <= 0) throw new Error('décalage strictement positif');
+  if (compte.derniereS1 != null) compte.derniereS1 = ajouterJours(compte.derniereS1, jours);
+  if (compte.cycle) compte.cycle.debut = ajouterJours(compte.cycle.debut, jours);
+  if (compte.veille) {
+    compte.veille.ouverteLe = ajouterJours(compte.veille.ouverteLe, jours);
+    compte.veille.prochaineEnquete = ajouterJours(compte.veille.prochaineEnquete, jours);
+    if (compte.veille.enquete) compte.veille.enquete.decisionAt = ajouterJours(compte.veille.enquete.decisionAt, jours);
+  }
+  if (compte.verifRenforcee) compte.verifRenforcee.fin = ajouterJours(compte.verifRenforcee.fin, jours);
+  if (compte.presomption) compte.presomption.graceFinAt = ajouterJours(compte.presomption.graceFinAt, jours);
+  noterCompte(compte, at, 'COMPTEURS_DECALES', { jours, motif });
+}
+
+// ————————————————————————————————————————————————— moteur d'échéances
+
+function ouvrirSollicitation(compte, debut, at, motif) {
+  compte.cycle = { debut, decalage: 0, s2Utilise: false, relances: 0, enqueteOuverte: false };
+  compte.veille = null;
+  compte.etat = ETATS.SOLLICITATION;
+  noterCompte(compte, at, 'SOLLICITATION_OUVERTE', { motif, prevueLe: debut });
+}
+
+function ouvrirPresomption(compte, quand, at, voie) {
+  compte.cycle = null;
+  compte.veille = null;
+  compte.verifRenforcee = null;
+  compte.etat = ETATS.PRESUME_DECEDE;
+  compte.presomption = { at: quand, voie, graceFinAt: ajouterJours(quand, GRACE_JOURS), notifsEmises: 0 };
+  noterCompte(compte, at, 'PRESOMPTION_DECES', { voie, graceFinAt: compte.presomption.graceFinAt });
+}
+
+// Applique AU PLUS UNE transition due ; retourne true si quelque chose a changé.
+function etape(compte, at) {
+  // Fin de pause → check-in immédiat (BR-C-07, table 4.4)
+  if (compte.etat === ETATS.EN_PAUSE && at >= compte.pause.jusquau) {
+    const fin = compte.pause.jusquau;
+    compte.pause = null;
+    noterCompte(compte, at, 'PAUSE_TERMINEE', {});
+    ouvrirSollicitation(compte, fin, at, 'FIN_PAUSE');
+    return true;
+  }
+
+  // Vérification renforcée (chemin accéléré, 4.2)
+  if (compte.verifRenforcee) {
+    const v = compte.verifRenforcee;
+    const prochaine = ajouterJours(v.debut, (v.relancesEmises + 1) * VERIF_RENFORCEE_PAS_JOURS);
+    if (v.relancesEmises < 5 && at >= prochaine && prochaine < v.fin) {
+      v.relancesEmises += 1;
+      noterCompte(compte, at, 'RELANCE_RENFORCEE', { numero: v.relancesEmises, prevueLe: prochaine, canaux: CANAUX });
+      return true;
+    }
+    if (at >= v.fin) {
+      compte.verifRenforcee = null;
+      if (quorumAtteint(compte) && !v.signal) {
+        ouvrirPresomption(compte, v.fin, at, 'ACCELEREE');
+      } else {
+        ouvrirSollicitation(compte, v.fin, at, 'SORTIE_VERIFICATION_RENFORCEE');
+      }
+      return true;
+    }
+    return false;
+  }
+
+  // Échéance de cadence → Phase 1
+  if (compte.etat === ETATS.ARME && compte.derniereS1 != null) {
+    const echeance = ajouterMois(compte.derniereS1, compte.regles.cadenceMois);
+    if (at >= echeance) {
+      ouvrirSollicitation(compte, echeance, at, 'ECHEANCE_CADENCE');
+      return true;
+    }
+  }
+
+  // Phase 1 (sollicitations J+0 … J+56) puis Phase 2 (enquête) puis Phase 3 (décision)
+  if (compte.cycle) {
+    const c = compte.cycle;
+    if (c.relances < OFFSETS_SOLLICITATIONS.length) {
+      const prevue = ajouterJours(c.debut, OFFSETS_SOLLICITATIONS[c.relances] + c.decalage);
+      if (at >= prevue) {
+        c.relances += 1;
+        noterCompte(compte, at, 'SOLLICITATION_ENVOYEE', { niveau: c.relances, prevueLe: prevue, canaux: CANAUX });
+        return true;
+      }
+    }
+    const quandEnquete = ajouterJours(c.debut, ENQUETE_JOUR + c.decalage);
+    if (!c.enqueteOuverte && at >= quandEnquete) {
+      c.enqueteOuverte = true;
+      compte.etat = ETATS.ENQUETE;
+      noterCompte(compte, at, 'CONTACTS_SOLLICITES', {
+        contacts: contactsAcceptants(compte).map((x) => x.id),
+        prevueLe: quandEnquete,
+      });
+      return true;
+    }
+    const quandDecision = ajouterJours(c.debut, DECISION_JOUR + c.decalage);
+    if (c.enqueteOuverte && at >= quandDecision) {
+      compte.cycle = null;
+      if (quorumAtteint(compte)) {
+        ouvrirPresomption(compte, quandDecision, at, 'QUORUM');
+      } else {
+        compte.etat = ETATS.VEILLE_LONGUE;
+        compte.veille = {
+          ouverteLe: quandDecision,
+          prochaineEnquete: ajouterMois(quandDecision, VEILLE_REENQUETE_MOIS),
+          enquete: null,
+        };
+        noterCompte(compte, at, 'VEILLE_LONGUE_OUVERTE', {
+          prochaineEnquete: compte.veille.prochaineEnquete,
+          plancherInactivite: ajouterMois(compte.derniereS1, PLANCHER_INACTIVITE_MOIS),
+        });
+      }
+      return true;
+    }
+    return false;
+  }
+
+  // Veille longue : ré-enquêtes semestrielles, plancher de 18 mois (BR-C-05)
+  if (compte.veille) {
+    const v = compte.veille;
+    const plancher = ajouterMois(compte.derniereS1, PLANCHER_INACTIVITE_MOIS);
+    if (at >= plancher) {
+      // Jamais avant 18 mois sans S1 ; la grâce court depuis le plus tardif
+      // du plancher et de l'ouverture de la veille.
+      ouvrirPresomption(compte, Math.max(plancher, v.ouverteLe), at, 'INACTIVITE_18_MOIS');
+      return true;
+    }
+    if (v.enquete && at >= v.enquete.decisionAt) {
+      const quand = v.enquete.decisionAt;
+      v.enquete = null;
+      if (quorumAtteint(compte)) {
+        ouvrirPresomption(compte, quand, at, 'QUORUM');
+      } else {
+        compte.etat = ETATS.VEILLE_LONGUE;
+        v.prochaineEnquete = ajouterMois(quand, VEILLE_REENQUETE_MOIS);
+        noterCompte(compte, at, 'ENQUETE_SANS_QUORUM', { prochaineEnquete: v.prochaineEnquete });
+      }
+      return true;
+    }
+    if (!v.enquete && at >= v.prochaineEnquete) {
+      v.enquete = { decisionAt: ajouterJours(v.prochaineEnquete, VEILLE_ENQUETE_JOURS) };
+      compte.etat = ETATS.ENQUETE;
+      noterCompte(compte, at, 'CONTACTS_SOLLICITES', {
+        contacts: contactsAcceptants(compte).map((x) => x.id),
+        prevueLe: v.prochaineEnquete,
+      });
+      return true;
+    }
+    return false;
+  }
+
+  // Période de grâce : notifications hebdomadaires puis exécution (Phase 4/5)
+  if (compte.etat === ETATS.PRESUME_DECEDE) {
+    const p = compte.presomption;
+    const prochaineNotif = ajouterJours(p.at, (p.notifsEmises + 1) * 7);
+    if (prochaineNotif < p.graceFinAt && at >= prochaineNotif) {
+      p.notifsEmises += 1;
+      noterCompte(compte, at, 'RELANCE_GRACE', { numero: p.notifsEmises, prevueLe: prochaineNotif, canaux: CANAUX });
+      return true;
+    }
+    if (at >= p.graceFinAt) {
+      compte.etat = ETATS.EN_EXECUTION;
+      noterCompte(compte, at, 'EXECUTION_DEMARREE', { grace: `${GRACE_JOURS} jours révolus` });
+      return true;
+    }
+    return false;
+  }
+
+  // Liquidation → suppression (BR-E-01)
+  if (compte.etat === ETATS.EN_LIQUIDATION && at >= compte.liquidation.finAt) {
+    compte.etat = ETATS.SUPPRIME;
+    noterCompte(compte, at, 'COMPTE_SUPPRIME', { journalMinimalConserve: true });
+    return true;
+  }
+
+  return false;
+}
+
+// Évalue toutes les transitions dues à l'instant `at` (cascade en un appel).
+function tick(compte, at) {
+  const avant = compte.journal.length;
+  let garde = 0;
+  while (etape(compte, at) && garde++ < 500) { /* cascade */ }
+  return compte.journal.slice(avant);
+}
+
+// Fin de la vague immédiate (module D) → liquidation (module E).
+function terminerExecution(compte, { at }) {
+  if (compte.etat !== ETATS.EN_EXECUTION) throw new Error('aucune exécution en cours');
+  compte.etat = ETATS.EN_LIQUIDATION;
+  compte.liquidation = { finAt: ajouterJours(at, LIQUIDATION_JOURS) };
+  noterCompte(compte, at, 'EXECUTION_TERMINEE', {});
+  noterCompte(compte, at, 'LIQUIDATION_OUVERTE', { finAt: compte.liquidation.finAt });
+}
+
+// Tableau de bord de statut (BR-C-11).
+function prochainesEcheances(compte) {
+  const e = {};
+  if (compte.derniereS1 != null && ETATS_PROTOCOLE.includes(compte.etat)) {
+    e.echeanceCadence = ajouterMois(compte.derniereS1, compte.regles.cadenceMois);
+    e.plancherInactivite = ajouterMois(compte.derniereS1, PLANCHER_INACTIVITE_MOIS);
+  }
+  if (compte.cycle) {
+    e.enquete = ajouterJours(compte.cycle.debut, ENQUETE_JOUR + compte.cycle.decalage);
+    e.decision = ajouterJours(compte.cycle.debut, DECISION_JOUR + compte.cycle.decalage);
+  }
+  if (compte.veille) {
+    e.prochaineEnquete = compte.veille.enquete ? null : compte.veille.prochaineEnquete;
+    e.decisionEnquete = compte.veille.enquete ? compte.veille.enquete.decisionAt : null;
+  }
+  if (compte.verifRenforcee) e.finVerificationRenforcee = compte.verifRenforcee.fin;
+  if (compte.presomption) e.finGrace = compte.presomption.graceFinAt;
+  if (compte.pause) e.finPause = compte.pause.jusquau;
+  if (compte.liquidation) e.finLiquidation = compte.liquidation.finAt;
+  return e;
+}
+
+// ——— src/core/message.js ———
+// Cycle de vie d'un message — module B de la spécification v0.1 (MVP : privé
+// uniquement, A-2). Un scellé reste modifiable : chaque scellement produit une
+// version, seule la dernière version scellée est délivrée (BR-B-05), et une
+// version de moins de 24 h n'est pas exécutable (BR-B-09).
+
+
+const ETATS_MESSAGE = Object.freeze({
+  BROUILLON: 'BROUILLON',
+  SCELLE: 'SCELLE',
+});
+
+const TEXTE_MAX = 50_000;             // BR-B-06
+const IMAGES_MAX = 20;                // BR-B-06
+const NOTE_MAX = 200;                 // BR-B-07
+const MESSAGES_MAX_COMPTE = 200;      // BR-B-06
+const OCTETS_MAX_COMPTE = 5 * 1024 ** 3; // BR-B-06 : 5 Go
+const SCELLEMENT_DELAI_JOURS = 1;     // BR-B-09 : exécutable après 24 h
+const DIFFERE_MAX_MOIS = 25 * 12;     // BR-B-19
+
+function creerMessage({ id, auteurId, titre, at }) {
+  if (!titre || !titre.trim()) throw new Error('titre interne obligatoire (BR-B-02)');
+  return {
+    id,
+    auteurId,
+    titre, // visible du seul testateur (BR-B-02)
+    creeLe: at,
+    etat: ETATS_MESSAGE.BROUILLON,
+    travail: {
+      texte: '',
+      images: [],        // { nom, octets }
+      note: '',          // BR-B-07 : affichée au sas, non chiffrée
+      fortImpact: false, // BR-B-08 : déclenche le parcours renforcé (BR-D-13)
+      visibilite: 'PRIVE',        // BR-B-16 : privé par défaut, sans exception
+      autorisationPublique: null, // { cocheLe, confirmeLe, attribution, indexable }
+      publication: { mode: 'A_EXECUTION', dateFixe: null }, // BR-B-18 — une date
+                                  // fixe peut tomber du vivant du testateur (§7.4)
+      destinataires: [], // BR-B-10
+      secours: null,     // BR-B-13
+      delivrance: { mode: 'IMMEDIATE', dateFixe: null }, // BR-B-18
+    },
+    versions: [], // { numero, scelleLe, executableAt, contenu figé } — BR-B-05
+  };
+}
+
+function definirTexte(msg, texte) {
+  if (texte.length > TEXTE_MAX) throw new Error('texte limité à 50 000 caractères (BR-B-06)');
+  msg.travail.texte = texte;
+}
+
+function ajouterImage(msg, { nom, octets }) {
+  if (msg.travail.images.length >= IMAGES_MAX) throw new Error('20 images par message maximum (BR-B-06)');
+  msg.travail.images.push({ nom, octets });
+}
+
+function ajouterVideo() {
+  throw new Error('vidéo et audio prévus en V2 (BR-B-01)');
+}
+
+// BR-B-07 : note d'introduction lisible par le service, montrée au destinataire
+// AVANT qu'il n'ouvre le message. C'est le seul texte du message que le sas affiche.
+function definirNote(msg, note) {
+  if (note.length > NOTE_MAX) throw new Error("note d'introduction limitée à 200 caractères (BR-B-07)");
+  msg.travail.note = note;
+}
+
+// BR-B-08 : marquage « à fort impact » → sas renforcé côté destinataire.
+function marquerFortImpact(msg, valeur = true) {
+  msg.travail.fortImpact = Boolean(valeur);
+}
+
+// ————————————————————————————————— publication publique (BR-B-16/17, BR-D-18/19)
+// Consentement en deux temps, par message, jamais pré-coché, horodaté. Aucun
+// réglage global ne peut rendre des messages publics en masse (BR-B-17) : ces
+// fonctions ne prennent qu'un message à la fois, c'est délibéré.
+
+const ATTRIBUTIONS = ['NOM_COMPLET', 'PRENOM', 'PSEUDONYME', 'ANONYME']; // BR-D-18
+
+function demanderPublication(msg, at) {
+  msg.travail.autorisationPublique = { cocheLe: at, confirmeLe: null, attribution: null, indexable: false };
+}
+
+function confirmerPublication(msg, { at, attribution = 'PRENOM', indexable = false }) {
+  const a = msg.travail.autorisationPublique;
+  if (!a || !a.cocheLe) throw new Error("cocher l'autorisation de publication avant de la confirmer (BR-B-16)");
+  if (!ATTRIBUTIONS.includes(attribution)) throw new Error(`attribution parmi : ${ATTRIBUTIONS.join(', ')} (BR-D-18)`);
+  a.confirmeLe = at;
+  a.attribution = attribution;
+  a.indexable = Boolean(indexable); // case DISTINCTE de l'autorisation (BR-D-19)
+  msg.travail.visibilite = 'PUBLIC';
+}
+
+function revoquerPublication(msg) {
+  msg.travail.autorisationPublique = null;
+  msg.travail.visibilite = 'PRIVE';
+  msg.travail.publication = { mode: 'A_EXECUTION', dateFixe: null };
+}
+
+// BR-B-18 : « à l'exécution » (défaut) ou à une date fixe — y compris une date
+// antérieure au décès : le testateur peut choisir de parler au monde de son vivant.
+function programmerPublication(msg, { mode, dateTs = null, at }) {
+  if (msg.travail.visibilite !== 'PUBLIC') throw new Error('message privé : rien à publier (BR-B-16)');
+  if (mode === 'A_EXECUTION') {
+    msg.travail.publication = { mode, dateFixe: null };
+    return;
+  }
+  if (mode !== 'DATE_FIXE') throw new Error('mode de publication : A_EXECUTION ou DATE_FIXE');
+  if (dateTs == null || dateTs <= at) throw new Error('date de publication déjà passée (BR-B-18)');
+  if (dateTs > ajouterMois(at, DIFFERE_MAX_MOIS)) throw new Error('publication différée limitée à 25 ans (BR-B-19)');
+  msg.travail.publication = { mode, dateFixe: dateTs };
+}
+
+function ajouterDestinataire(msg, {
+  prenomNom, email, tel = null, langue = 'fr', relation = null,
+  mineur = false, adulteReferent = null,
+}) {
+  if (!email) throw new Error('email du destinataire obligatoire (BR-B-10)');
+  msg.travail.destinataires.push({ prenomNom, email, tel, langue, relation, mineur, adulteReferent });
+}
+
+// BR-B-13 : destinataire de secours, par message.
+function definirSecours(msg, { prenomNom, email, tel = null, langue = 'fr' }) {
+  if (!email) throw new Error('email du destinataire de secours obligatoire (BR-B-13)');
+  msg.travail.secours = { prenomNom, email, tel, langue };
+}
+
+// BR-B-18/19 : MVP = immédiat (défaut) ou date fixe, horizon 25 ans.
+function programmerDateFixe(msg, dateTs, at) {
+  if (dateTs <= at) throw new Error('date de délivrance déjà passée (BR-B-18)');
+  if (dateTs > ajouterMois(at, DIFFERE_MAX_MOIS)) {
+    throw new Error('délivrance différée limitée à 25 ans (BR-B-19)');
+  }
+  msg.travail.delivrance = { mode: 'DATE_FIXE', dateFixe: dateTs };
+}
+
+function revenirImmediate(msg) {
+  msg.travail.delivrance = { mode: 'IMMEDIATE', dateFixe: null };
+}
+
+// Scellement explicite (BR-B-04) : fige une version.
+function sceller(msg, at) {
+  const t = msg.travail;
+  if (t.texte.trim() === '' && t.images.length === 0) throw new Error('contenu vide : rien à sceller');
+  if (t.visibilite === 'PUBLIC') {
+    if (!t.autorisationPublique || !t.autorisationPublique.confirmeLe) {
+      throw new Error('autorisation de publication non confirmée (BR-B-16)');
+    }
+  } else if (t.destinataires.length === 0) {
+    throw new Error('au moins un destinataire (BR-B-02)');
+  }
+  for (const d of t.destinataires) {
+    // BR-B-14 : mineur → adulte référent ET date de délivrance fixée, sans exception.
+    if (d.mineur && (!d.adulteReferent || t.delivrance.mode !== 'DATE_FIXE')) {
+      throw new Error('destinataire mineur : adulte référent et date de délivrance obligatoires (BR-B-14)');
+    }
+  }
+  const version = {
+    numero: msg.versions.length + 1,
+    scelleLe: at,
+    executableAt: ajouterJours(at, SCELLEMENT_DELAI_JOURS), // BR-B-09
+    texte: t.texte,
+    images: t.images.map((i) => ({ ...i })),
+    note: t.note,
+    fortImpact: t.fortImpact,
+    destinataires: t.destinataires.map((d) => ({ ...d })),
+    secours: t.secours ? { ...t.secours } : null,
+    delivrance: { ...t.delivrance },
+    visibilite: t.visibilite,
+    autorisationPublique: t.autorisationPublique ? { ...t.autorisationPublique } : null,
+    publication: { ...t.publication },
+  };
+  msg.versions.push(version);
+  msg.etat = ETATS_MESSAGE.SCELLE;
+  return version;
+}
+
+// Sélection à l'exécution : seule la dernière version scellée part (BR-B-05),
+// les brouillons jamais (BR-B-03), une version de moins de 24 h reste en
+// attente — elle n'est pas délivrée, et l'ancienne version non plus (BR-B-09).
+function pourExecution(messages, at) {
+  const executables = [];
+  const enAttente = [];
+  const exclus = [];
+  for (const msg of messages) {
+    if (msg.versions.length === 0) {
+      exclus.push({ message: msg, motif: 'BROUILLON' });
+      continue;
+    }
+    const derniere = msg.versions[msg.versions.length - 1];
+    if (derniere.visibilite === 'PUBLIC') {
+      // Les publics suivent la file de modération, pas la délivrance (§5.3).
+      exclus.push({ message: msg, motif: 'PUBLIC' });
+      continue;
+    }
+    if (at < derniere.executableAt) {
+      enAttente.push({ message: msg, motif: 'SCELLEMENT_RECENT', executableAt: derniere.executableAt });
+      continue;
+    }
+    executables.push({ message: msg, version: derniere });
+  }
+  return { executables, enAttente, exclus };
+}
+
+// Quotas par compte (BR-B-06) : 200 messages, 5 Go.
+function verifierQuotasCompte(messages) {
+  const octets = messages.reduce(
+    (somme, m) => somme + m.travail.images.reduce((s, i) => s + i.octets, 0),
+    0,
+  );
+  return {
+    messages: messages.length,
+    octets,
+    conforme: messages.length <= MESSAGES_MAX_COMPTE && octets <= OCTETS_MAX_COMPTE,
+  };
+}
+
+// ——— src/core/execution.js ———
+// Exécution posthume — module D de la spécification v0.1 (§5.1 et 5.2).
+// L'exécution est irréversible (BR-D-01) : ce module ne connaît aucune façon
+// de l'annuler. Il produit des « plis » — un pli = un destinataire, une vague,
+// l'ensemble de ses messages (BR-D-03) — et gère leur cycle de vie.
+//
+// Deux principes de la spec sont encodés en négatif, et méritent d'être dits :
+//   • aucune relance n'est envoyée à un destinataire qui n'ouvre pas (§7.3) ;
+//     les seules nouvelles tentatives sont techniques, sur rebond (BR-D-07) ;
+//   • aucun contenu de message ne part dans une notification (BR-D-08) :
+//     contenuNotification() ne retourne que l'existence d'un pli.
+
+
+const ETATS_PLI = Object.freeze({
+  PLANIFIE: 'PLANIFIE',
+  NOTIFIE: 'NOTIFIE',          // notification partie, sas pas encore ouvert
+  SAS_OUVERT: 'SAS_OUVERT',    // le destinataire a vu la page d'atterrissage
+  LU: 'LU',
+  REFUSE: 'REFUSE',            // BR-D-11
+  NON_DELIVRE: 'NON_DELIVRE',  // BR-D-07
+  EXPIRE: 'EXPIRE',            // lien de 12 mois échu sans ouverture (BR-D-09)
+  EFFACE: 'EFFACE',            // fin de conservation
+});
+
+const PREAVIS_CONTACTS_JOURS = 7;      // A-7 / R-D-1 : les vivants avant les endeuillés
+const ETALEMENT_VAGUE_H = 72;          // BR-D-02
+const TENTATIVES_MAX = 3;              // BR-D-07
+const TENTATIVE_PAS_JOURS = 10;        // 3 nouvelles tentatives sur 30 jours
+const LIEN_VALIDITE_MOIS = 12;         // BR-D-09
+const CONSERVATION_MOIS = 12;          // BR-D-07, BR-D-11, §5.2 point 4
+const REFLEXION_FORT_IMPACT_H = 24;    // BR-D-13
+const CODE_VALIDITE_MIN = 15;          // code à usage unique du sas (§5.2 point 3)
+const RAPPELS_AUTORISES_MOIS = [1, 3, 6]; // sas : « Plus tard »
+const HEURE = 3_600_000;
+
+function noterExecution(compte, at, type, donnees = {}) {
+  consigner(compte.journal, { at, type, donnees }, compte._hachage);
+}
+
+function nature(version) {
+  return {
+    texte: version.texte.trim().length > 0,
+    images: version.images.length,
+    fortImpact: version.fortImpact, // BR-B-08 → sas renforcé (BR-D-13)
+  };
+}
+
+function creerPli({ id, destinataire, entrees, type, prevuLe }) {
+  return {
+    id,
+    type,
+    destinataire: { ...destinataire },
+    messages: entrees.map(({ message, version }) => ({
+      messageId: message.id,
+      version: version.numero,
+      dateMessage: message.creeLe,
+      derniereModif: version.scelleLe, // affichée au sas (R-B-1)
+      note: version.note,              // BR-B-07
+      nature: nature(version),
+      texte: version.texte,            // jamais exposé avant lecture vérifiée
+      images: version.images,
+      secours: version.secours,
+    })),
+    etat: ETATS_PLI.PLANIFIE,
+    prevuLe,
+    notifieLe: null,
+    lienExpireLe: null,
+    canal: destinataire.email,
+    secoursUtilise: false,
+    tentatives: 0,
+    rebond: false,
+    prochaineTentative: null,
+    sasOuvertLe: null,
+    reflexionFinAt: null,
+    code: null,
+    codeVerifieLe: null,
+    luLe: null,
+    telechargeLe: null,
+    refuseLe: null,
+    rappelLe: null,
+    conservationFinAt: null,
+  };
+}
+
+function trouverPli(compte, pliId) {
+  if (!compte.execution) throw new Error('aucune exécution en cours');
+  const pli = compte.execution.plis.find((p) => p.id === pliId);
+  if (!pli) throw new Error('pli introuvable');
+  return pli;
+}
+
+// Démarre l'exécution : construit les plis et fixe le préavis aux contacts.
+// `messages` est la liste complète du compte ; le tri BR-B-03/05/09 est délégué
+// à pourExecution().
+function demarrerExecution(compte, messages, { at }) {
+  if (compte.etat !== ETATS.EN_EXECUTION) {
+    throw new Error("l'exécution ne démarre qu'à l'expiration de la période de grâce (BR-D-01)");
+  }
+  if (compte.execution) throw new Error('exécution déjà démarrée');
+
+  const tri = pourExecution(messages, at);
+  const notificationsAt = ajouterJours(at, PREAVIS_CONTACTS_JOURS); // A-7
+  const plis = [];
+
+  // Une vague immédiate, étalée sur 72 h (BR-D-02), et un pli par destinataire
+  // regroupant tous ses messages (BR-D-03).
+  const immediats = tri.executables.filter(({ version }) => version.delivrance.mode === 'IMMEDIATE');
+  const groupes = new Map();
+  for (const { message, version } of immediats) {
+    for (const dest of version.destinataires) {
+      if (!groupes.has(dest.email)) groupes.set(dest.email, { destinataire: dest, entrees: [] });
+      groupes.get(dest.email).entrees.push({ message, version });
+    }
+  }
+  const total = groupes.size;
+  let rang = 0;
+  for (const { destinataire, entrees } of groupes.values()) {
+    const decalage = total > 1 ? Math.round((ETALEMENT_VAGUE_H * HEURE * rang) / total) : 0;
+    plis.push(creerPli({
+      id: `pli-${plis.length + 1}`, destinataire, entrees,
+      type: 'IMMEDIAT', prevuLe: notificationsAt + decalage,
+    }));
+    rang += 1;
+  }
+
+  // Messages à date fixe : un pli par destinataire et par date (BR-D-04).
+  const differes = tri.executables.filter(({ version }) => version.delivrance.mode === 'DATE_FIXE');
+  const groupesDiffere = new Map();
+  for (const { message, version } of differes) {
+    for (const dest of version.destinataires) {
+      const cle = `${dest.email}@${version.delivrance.dateFixe}`;
+      if (!groupesDiffere.has(cle)) {
+        groupesDiffere.set(cle, { destinataire: dest, entrees: [], date: version.delivrance.dateFixe });
+      }
+      groupesDiffere.get(cle).entrees.push({ message, version });
+    }
+  }
+  for (const { destinataire, entrees, date } of groupesDiffere.values()) {
+    plis.push(creerPli({
+      id: `pli-${plis.length + 1}`, destinataire, entrees,
+      type: 'DIFFERE', prevuLe: Math.max(date, notificationsAt),
+    }));
+  }
+
+  compte.execution = { demarreeLe: at, notificationsAt, plis };
+  noterExecution(compte, at, 'EXECUTION_PLANIFIEE', {
+    plisImmediats: total,
+    plisDifferes: plis.length - total,
+    messagesEnAttente: tri.enAttente.length, // BR-B-09
+    messagesExclus: tri.exclus.length,       // BR-B-03 : brouillons
+  });
+  // A-7 : un humain doit pouvoir prévenir avant l'automate (R-D-1).
+  noterExecution(compte, at, 'PREAVIS_CONTACTS', { notificationsDestinatairesLe: notificationsAt });
+  return compte.execution;
+}
+
+function notifier(compte, pli, at, motif) {
+  pli.etat = ETATS_PLI.NOTIFIE;
+  pli.notifieLe = at;
+  pli.lienExpireLe = ajouterMois(at, LIEN_VALIDITE_MOIS); // BR-D-09
+  pli.rappelLe = null;
+  noterExecution(compte, at, 'NOTIFICATION_ENVOYEE', {
+    pli: pli.id,
+    canal: pli.canal,
+    motif,
+    messages: pli.messages.length,
+    contenuInclus: false, // BR-D-08 : l'email ne contient qu'un lien
+    langue: pli.destinataire.langue,
+  });
+}
+
+// Contenu réellement transmis dans la notification : aucune donnée de message
+// (BR-D-08). Cette fonction existe pour que la règle soit testable.
+function contenuNotification(pli) {
+  return {
+    canal: pli.canal,
+    langue: pli.destinataire.langue,
+    prenomNom: pli.destinataire.prenomNom,
+    lien: `/pli/${pli.id}`,
+    nombreMessages: pli.messages.length,
+  };
+}
+
+// Signalé par l'infrastructure d'envoi : adresse définitivement injoignable.
+function signalerRebond(compte, { pliId, at }) {
+  const pli = trouverPli(compte, pliId);
+  if (![ETATS_PLI.NOTIFIE, ETATS_PLI.SAS_OUVERT].includes(pli.etat)) {
+    throw new Error('rebond possible sur un pli notifié');
+  }
+  pli.rebond = true;
+  pli.tentatives = 0;
+  pli.prochaineTentative = ajouterJours(at, TENTATIVE_PAS_JOURS);
+  noterExecution(compte, at, 'REBOND_PERMANENT', { pli: pli.id, canal: pli.canal });
+}
+
+// Une étape due pour un pli ; retourne true si quelque chose a changé.
+function etapePli(compte, pli, at) {
+  if (pli.etat === ETATS_PLI.PLANIFIE && at >= pli.prevuLe) {
+    notifier(compte, pli, at, pli.type === 'DIFFERE' ? 'DATE_PROGRAMMEE' : 'VAGUE_IMMEDIATE');
+    return true;
+  }
+
+  // Rappel demandé par le destinataire lui-même depuis le sas (« Plus tard »).
+  if (pli.rappelLe != null && at >= pli.rappelLe
+      && [ETATS_PLI.NOTIFIE, ETATS_PLI.SAS_OUVERT].includes(pli.etat)) {
+    pli.rappelLe = null;
+    noterExecution(compte, at, 'RAPPEL_DEMANDE_ENVOYE', { pli: pli.id, canal: pli.canal });
+    return true;
+  }
+
+  // BR-D-07 : rebond permanent → 3 tentatives sur 30 jours, puis secours,
+  // puis signalement à l'exécuteur, puis statut « non délivré ».
+  if (pli.rebond && pli.prochaineTentative != null && at >= pli.prochaineTentative) {
+    if (pli.tentatives < TENTATIVES_MAX) {
+      pli.tentatives += 1;
+      pli.prochaineTentative = ajouterJours(pli.prochaineTentative, TENTATIVE_PAS_JOURS);
+      noterExecution(compte, at, 'NOUVELLE_TENTATIVE', { pli: pli.id, numero: pli.tentatives, canal: pli.canal });
+      return true;
+    }
+    const avecSecours = pli.messages.find((m) => m.secours);
+    if (avecSecours && !pli.secoursUtilise) {
+      pli.secoursUtilise = true;
+      pli.rebond = false;
+      pli.tentatives = 0;
+      pli.prochaineTentative = null;
+      pli.destinataire = { ...avecSecours.secours };
+      pli.canal = avecSecours.secours.email;
+      noterExecution(compte, at, 'BASCULE_SECOURS', { pli: pli.id, canal: pli.canal }); // BR-B-13
+      notifier(compte, pli, at, 'DESTINATAIRE_SECOURS');
+      return true;
+    }
+    pli.etat = ETATS_PLI.NON_DELIVRE;
+    pli.rebond = false;
+    pli.prochaineTentative = null;
+    pli.conservationFinAt = ajouterMois(at, CONSERVATION_MOIS);
+    noterExecution(compte, at, 'NON_DELIVRE', {
+      pli: pli.id,
+      signaleExecuteur: true, // BR-D-07 / BR-A-19 (c)
+      conservationFinAt: pli.conservationFinAt,
+    });
+    return true;
+  }
+
+  // BR-D-09 : lien de 12 mois échu sans que le pli ait été ouvert.
+  if ([ETATS_PLI.NOTIFIE, ETATS_PLI.SAS_OUVERT].includes(pli.etat)
+      && pli.lienExpireLe != null && at >= pli.lienExpireLe) {
+    pli.etat = ETATS_PLI.EXPIRE;
+    // Un pli jamais ouvert est en substance non délivré (R-B-4 : l'email a pu
+    // finir en spam). On ne détruit donc pas dans la foulée : conservation de
+    // 12 mois et signalement, comme BR-D-07.
+    pli.conservationFinAt = ajouterMois(at, CONSERVATION_MOIS);
+    noterExecution(compte, at, 'LIEN_EXPIRE', {
+      pli: pli.id,
+      signaleExecuteur: true,
+      conservationFinAt: pli.conservationFinAt,
+    });
+    return true;
+  }
+
+  // Fin de conservation : refus (BR-D-11), non délivré (BR-D-07), accès en
+  // ligne après lecture (§5.2 point 4), lien expiré.
+  if (pli.conservationFinAt != null && at >= pli.conservationFinAt
+      && [ETATS_PLI.LU, ETATS_PLI.REFUSE, ETATS_PLI.NON_DELIVRE, ETATS_PLI.EXPIRE].includes(pli.etat)) {
+    const precedent = pli.etat;
+    pli.etat = ETATS_PLI.EFFACE;
+    pli.conservationFinAt = null;
+    for (const m of pli.messages) { m.texte = null; m.images = []; }
+    noterExecution(compte, at, 'PLI_EFFACE', { pli: pli.id, precedent });
+  }
+  return false;
+}
+
+// Moteur d'échéances de l'exécution. Ne relance JAMAIS un destinataire qui
+// n'ouvre pas (§7.3) : seules les tentatives techniques sur rebond existent.
+// Cascade toutes les étapes dues, comme tick() côté compte.
+function tickExecution(compte, at) {
+  if (!compte.execution) return [];
+  const avant = compte.journal.length;
+  for (const pli of compte.execution.plis) {
+    let garde = 0;
+    while (etapePli(compte, pli, at) && garde++ < 500) { /* cascade */ }
+  }
+  return compte.journal.slice(avant);
+}
+
+// ————————————————————————————————— parcours du destinataire (§5.2)
+
+// Étape 2, le sas : décrit sans jamais dévoiler.
+function ouvrirSas(compte, { pliId, at }) {
+  const pli = trouverPli(compte, pliId);
+  if (pli.etat === ETATS_PLI.EXPIRE || pli.etat === ETATS_PLI.EFFACE) {
+    throw new Error('ce lien a expiré (BR-D-09)');
+  }
+  if (![ETATS_PLI.NOTIFIE, ETATS_PLI.SAS_OUVERT, ETATS_PLI.LU].includes(pli.etat)) {
+    throw new Error('pli non accessible');
+  }
+  if (pli.etat === ETATS_PLI.NOTIFIE) {
+    pli.etat = ETATS_PLI.SAS_OUVERT;
+    pli.sasOuvertLe = at;
+    const fortImpact = pli.messages.some((m) => m.nature.fortImpact);
+    // BR-D-13 : sas renforcé, délai de réflexion de 24 h avant ouverture possible.
+    pli.reflexionFinAt = fortImpact ? at + REFLEXION_FORT_IMPACT_H * HEURE : at;
+    noterExecution(compte, at, 'SAS_OUVERT', { pli: pli.id, fortImpact });
+  }
+  return {
+    testateur: compte.id,
+    messages: pli.messages.map((m) => ({
+      dateMessage: m.dateMessage,
+      derniereModif: m.derniereModif,
+      note: m.note,        // BR-B-07 : le seul texte affiché avant ouverture
+      nature: m.nature,
+    })),
+    fortImpact: pli.messages.some((m) => m.nature.fortImpact),
+    reflexionFinAt: pli.reflexionFinAt,
+    choix: ['OUVRIR', 'PLUS_TARD', 'REFUSER'], // §5.2 : trois choix de même poids
+    ressourcesDeuil: pli.destinataire.langue,  // BR-L-06 : propres au pays
+  };
+}
+
+// Étape 3, la vérification : code à usage unique, pas de création de compte
+// (BR-D-10). Le code vient de l'infrastructure — le noyau reste déterministe.
+function envoyerCode(compte, { pliId, code, at }) {
+  const pli = trouverPli(compte, pliId);
+  if (pli.etat !== ETATS_PLI.SAS_OUVERT) throw new Error('ouvrir le sas avant de demander un code');
+  pli.code = { valeur: code, expireLe: at + CODE_VALIDITE_MIN * 60_000, utilise: false };
+  noterExecution(compte, at, 'CODE_ENVOYE', { pli: pli.id, canal: pli.canal });
+}
+
+function verifierCode(compte, { pliId, code, at }) {
+  const pli = trouverPli(compte, pliId);
+  if (!pli.code || pli.code.utilise) throw new Error('aucun code en attente');
+  if (at > pli.code.expireLe) throw new Error('code expiré');
+  if (pli.code.valeur !== code) throw new Error('code incorrect');
+  pli.code.utilise = true;
+  pli.codeVerifieLe = at;
+  noterExecution(compte, at, 'CODE_VERIFIE', { pli: pli.id });
+}
+
+// Ouverture effective. La lecture est enregistrée (BR-D-06) mais communiquée à
+// personne (BR-D-12).
+function lire(compte, { pliId, at }) {
+  const pli = trouverPli(compte, pliId);
+  if (pli.etat === ETATS_PLI.EFFACE || pli.etat === ETATS_PLI.EXPIRE) throw new Error('ce lien a expiré (BR-D-09)');
+  if (pli.etat === ETATS_PLI.REFUSE) throw new Error('pli refusé par le destinataire (BR-D-11)');
+  if (!pli.codeVerifieLe) throw new Error('vérification par code à usage unique requise (BR-D-10)');
+  if (at < pli.reflexionFinAt) {
+    throw new Error('message à fort impact : délai de réflexion de 24 h (BR-D-13)');
+  }
+  if (pli.etat !== ETATS_PLI.LU) {
+    pli.etat = ETATS_PLI.LU;
+    pli.luLe = at;
+    pli.conservationFinAt = ajouterMois(at, CONSERVATION_MOIS); // §5.2 point 4
+    noterExecution(compte, at, 'LECTURE_ENREGISTREE', {
+      pli: pli.id,
+      diffusion: 'AUCUNE', // BR-D-12 : n'est communiquée à personne
+      accesJusquau: pli.conservationFinAt,
+    });
+  }
+  return pli.messages.map((m) => ({ texte: m.texte, images: m.images, note: m.note }));
+}
+
+// §5.2 point 4 : le téléchargement est mis en avant — le service n'est pas
+// un conservatoire éternel.
+function telecharger(compte, { pliId, at }) {
+  const pli = trouverPli(compte, pliId);
+  if (pli.etat !== ETATS_PLI.LU) throw new Error('ouvrir le message avant de le télécharger');
+  pli.telechargeLe = at;
+  noterExecution(compte, at, 'TELECHARGEMENT', { pli: pli.id, format: 'ARCHIVE_AUTONOME' });
+  return { messages: pli.messages.map((m) => ({ texte: m.texte, images: m.images })) };
+}
+
+// « Plus tard » : rappel à 1, 3 ou 6 mois, choisi par le destinataire.
+function differer(compte, { pliId, mois, at }) {
+  const pli = trouverPli(compte, pliId);
+  if (!RAPPELS_AUTORISES_MOIS.includes(mois)) throw new Error('rappel à 1, 3 ou 6 mois (§5.2)');
+  if (![ETATS_PLI.NOTIFIE, ETATS_PLI.SAS_OUVERT].includes(pli.etat)) throw new Error('pli non différable');
+  pli.rappelLe = ajouterMois(at, mois);
+  noterExecution(compte, at, 'RAPPEL_DEMANDE', { pli: pli.id, rappelLe: pli.rappelLe });
+}
+
+// BR-D-11 : refus définitif ; le contenu est conservé 12 mois au cas où le
+// destinataire changerait d'avis, puis supprimé.
+function refuser(compte, { pliId, at }) {
+  const pli = trouverPli(compte, pliId);
+  if (![ETATS_PLI.NOTIFIE, ETATS_PLI.SAS_OUVERT].includes(pli.etat)) throw new Error('pli non refusable');
+  pli.etat = ETATS_PLI.REFUSE;
+  pli.refuseLe = at;
+  pli.conservationFinAt = ajouterMois(at, CONSERVATION_MOIS);
+  noterExecution(compte, at, 'REFUS_DESTINATAIRE', {
+    pli: pli.id,
+    signaleExecuteur: true, // BR-D-11
+    conservationFinAt: pli.conservationFinAt,
+  });
+}
+
+// Le destinataire peut revenir sur son refus tant que la conservation court.
+function revenirSurRefus(compte, { pliId, at }) {
+  const pli = trouverPli(compte, pliId);
+  if (pli.etat !== ETATS_PLI.REFUSE) throw new Error('aucun refus à annuler');
+  pli.etat = ETATS_PLI.SAS_OUVERT;
+  pli.refuseLe = null;
+  pli.conservationFinAt = null;
+  noterExecution(compte, at, 'REFUS_ANNULE', { pli: pli.id });
+}
+
+// BR-D-14 : droit d'opposition et d'effacement du destinataire sur SES données.
+function oppositionDestinataire(compte, { pliId, at }) {
+  const pli = trouverPli(compte, pliId);
+  pli.destinataire = { prenomNom: null, email: null, tel: null, langue: pli.destinataire.langue };
+  pli.canal = null;
+  pli.etat = ETATS_PLI.EFFACE;
+  pli.conservationFinAt = null;
+  for (const m of pli.messages) { m.texte = null; m.images = []; }
+  noterExecution(compte, at, 'OPPOSITION_DESTINATAIRE', { pli: pli.id, donneesEffacees: true });
+}
+
+// Vue d'ensemble, notamment pour le journal remis à l'exécuteur (BR-A-19 d).
+function etatExecution(compte) {
+  if (!compte.execution) return null;
+  const parEtat = {};
+  for (const pli of compte.execution.plis) parEtat[pli.etat] = (parEtat[pli.etat] || 0) + 1;
+  return {
+    demarreeLe: compte.execution.demarreeLe,
+    notificationsAt: compte.execution.notificationsAt,
+    plis: compte.execution.plis.length,
+    parEtat,
+    vagueImmediateTerminee: compte.execution.plis
+      .filter((p) => p.type === 'IMMEDIAT')
+      .every((p) => p.etat !== ETATS_PLI.PLANIFIE),
+  };
+}
+
+// ——— demo/app.js ———
+// Simulateur : pilote le noyau (protocole de preuve de vie §4 + exécution §5)
+// avec une horloge simulée. Aucune logique métier ici — tout vient de src/core/.
+
+
+let t;
+let compte;
+let messages;
+
+const $ = (id) => document.getElementById(id);
+const fmt = (ts) => (ts == null ? '—' : new Date(ts).toISOString().slice(0, 10));
+const echap = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+
+function initialiser() {
+  t = Date.parse('2026-01-01T00:00:00Z');
+  compte = creerCompte({ id: 'Camille', at: t, cadenceMois: 6 });
+
+  const pourNour = creerMessage({ id: 'm1', auteurId: 'Camille', titre: 'Pour Nour', at: t });
+  definirTexte(pourNour, 'Nour, trois choses que je n’ai jamais su te dire…');
+  definirNote(pourNour, 'Une lettre écrite un dimanche de janvier.');
+  ajouterDestinataire(pourNour, { prenomNom: 'Nour B.', email: 'nour@exemple.org', relation: 'fille' });
+  sceller(pourNour, t);
+
+  const pourSami = creerMessage({ id: 'm2', auteurId: 'Camille', titre: 'À Sami', at: t });
+  definirTexte(pourSami, 'Sami, il y a une chose que tu dois savoir sur notre famille.');
+  definirNote(pourSami, 'Ce message contient une révélation familiale.');
+  marquerFortImpact(pourSami);
+  ajouterDestinataire(pourSami, { prenomNom: 'Sami B.', email: 'sami@exemple.org', relation: 'frère' });
+  sceller(pourSami, t);
+
+  messages = [pourNour, pourSami];
+
+  armer(compte, { at: t, auth: { deuxFacteurs: true }, canauxVerifies: 2, messagesScelles: 2, accuseLecture: true });
+  for (const id of ['awa', 'bilal']) {
+    inviterContact(compte, { id, nom: id, email: `${id}@exemple.org`, at: t });
+    accepterInvitation(compte, { id, at: t });
+  }
+  rendre();
+  message('Compte armé le 2026-01-01 (cadence 6 mois), 2 messages scellés, contacts Awa et Bilal acceptants.');
+}
+
+function message(txt, erreur = false) {
+  const el = $('msg');
+  el.textContent = txt;
+  el.classList.toggle('erreur', erreur);
+}
+
+// L'exécution démarre d'elle-même dès que la grâce est épuisée (BR-D-01).
+function synchroniser() {
+  tick(compte, t); // d'abord faire avancer le protocole…
+  if (compte.etat === ETATS.EN_EXECUTION && !compte.execution) {
+    demarrerExecution(compte, messages, { at: t }); // …puis planifier la délivrance
+  }
+  tickExecution(compte, t);
+}
+
+const LIBELLE_PLI = {
+  [ETATS_PLI.PLANIFIE]: 'planifié',
+  [ETATS_PLI.NOTIFIE]: 'notifié',
+  [ETATS_PLI.SAS_OUVERT]: 'sas ouvert',
+  [ETATS_PLI.LU]: 'lu',
+  [ETATS_PLI.REFUSE]: 'refusé',
+  [ETATS_PLI.NON_DELIVRE]: 'non délivré',
+  [ETATS_PLI.EXPIRE]: 'lien expiré',
+  [ETATS_PLI.EFFACE]: 'effacé',
+};
+
+function rendrePlis() {
+  const carte = $('carte-plis');
+  if (!compte.execution) { carte.hidden = true; return; }
+  carte.hidden = false;
+  $('plis').innerHTML = compte.execution.plis.map((pli) => {
+    const actions = [];
+    if ([ETATS_PLI.NOTIFIE, ETATS_PLI.SAS_OUVERT].includes(pli.etat)) {
+      actions.push('<button data-action="sas" data-pli="' + pli.id + '">Ouvrir le sas</button>');
+      actions.push('<button data-action="lire" data-pli="' + pli.id + '">Lire</button>');
+      actions.push('<button data-action="tard" data-pli="' + pli.id + '">Plus tard</button>');
+      actions.push('<button data-action="refus" data-pli="' + pli.id + '">Refuser</button>');
+    }
+    return `<div class="pli">
+      <div class="pli-tete">
+        <b>${echap(pli.destinataire.prenomNom || '—')}</b>
+        <span class="pli-etat" data-etat="${pli.etat}">${LIBELLE_PLI[pli.etat]}</span>
+        <span class="pli-meta">${pli.messages.length} message(s) · ${pli.type === 'DIFFERE' ? 'différé' : 'vague immédiate'} · envoi ${fmt(pli.prevuLe)}</span>
+      </div>
+      <div class="btns">${actions.join('')}</div>
+    </div>`;
+  }).join('');
+}
+
+function rendre() {
+  $('date').textContent = fmt(t);
+  const chip = $('etat');
+  chip.textContent = compte.etat;
+  chip.dataset.etat = compte.etat;
+  $('activite').textContent = fmt(compte.derniereS1);
+
+  const e = prochainesEcheances(compte);
+  $('echeances').innerHTML = [
+    ['Échéance de cadence', e.echeanceCadence],
+    ['Enquête (contacts)', e.enquete],
+    ['Décision', e.decision],
+    ['Prochaine ré-enquête', e.prochaineEnquete],
+    ['Décision ré-enquête', e.decisionEnquete],
+    ['Fin vérif. renforcée', e.finVerificationRenforcee],
+    ['Fin de grâce', e.finGrace],
+    ['Fin de pause', e.finPause],
+    ['Plancher 18 mois', e.plancherInactivite],
+  ]
+    .filter(([, ts]) => ts != null)
+    .map(([lib, ts]) => `<div class="ech${ts <= t ? ' passee' : ''}"><span>${lib}</span><b>${fmt(ts)}</b></div>`)
+    .join('');
+
+  rendrePlis();
+
+  $('journal').innerHTML = [...compte.journal].reverse()
+    .map((ev) => `<li><span class="jat">${fmt(ev.at)}</span><span class="jtype">${ev.type}</span><span class="jdata">${echap(JSON.stringify(ev.donnees))}</span></li>`)
+    .join('');
+}
+
+function avancer(jours = 0, mois = 0) {
+  if (mois) t = ajouterMois(t, mois);
+  if (jours) t = ajouterJours(t, jours);
+  const avant = compte.journal.length;
+  synchroniser();
+  const types = compte.journal.slice(avant).map((e) => e.type);
+  const resume = types.length > 6 ? types.slice(0, 6).join(' · ') + ` · … (${types.length})` : types.join(' · ');
+  message(types.length ? 'Événements : ' + resume : 'Aucun événement.');
+  rendre();
+}
+
+function agir(fn, ok) {
+  try {
+    fn();
+    synchroniser();
+    message(ok);
+  } catch (err) {
+    message(err.message, true);
+  }
+  rendre();
+}
+
+$('btn-7j').onclick = () => avancer(7, 0);
+$('btn-15j').onclick = () => avancer(15, 0);
+$('btn-1m').onclick = () => avancer(0, 1);
+$('btn-3m').onclick = () => avancer(0, 3);
+
+$('btn-s1').onclick = () => agir(
+  () => signalS1(compte, { type: 'LIEN_SIGNE', at: t }),
+  'Check-in S1 (lien signé) : compteur remis à zéro, tout processus annulé (BR-C-03).',
+);
+$('btn-s2').onclick = () => agir(
+  () => {
+    const r = signalS2(compte, { type: 'OUVERTURE_EMAIL', at: t });
+    if (r.effet === 'AUCUN') throw new Error('S2 sans effet ici : le compteur ne bouge jamais (BR-C-04).');
+  },
+  'S2 (email ouvert) : escalade décalée de 30 jours, compteur inchangé (BR-C-04).',
+);
+$('btn-s2exp').onclick = () => agir(
+  () => signalS2(compte, { type: 'CLIC_JE_SUIS_VIVANT', at: t, explicite: true }),
+  '« Je suis vivant » : présomption annulée, check-in S1 redemandé (Phase 4).',
+);
+$('btn-pause').onclick = () => agir(
+  () => demarrerPause(compte, { jusquau: ajouterMois(t, 3), at: t, auth: { deuxFacteurs: true } }),
+  'Absence programmée de 3 mois : protocole suspendu (BR-C-07).',
+);
+$('btn-vivant').onclick = () => agir(
+  () => repondreEnquete(compte, { contactId: 'awa', reponse: 'VIVANT', at: t }),
+  'Awa répond « il va bien » : escalade suspendue 60 jours (une seule fois).',
+);
+$('btn-awa').onclick = () => agir(
+  () => attesterDeces(compte, { contactId: 'awa', piece: 'acte-deces.pdf', at: t }),
+  'Awa atteste le décès (avec pièce) : attestation nominative enregistrée (BR-A-17).',
+);
+$('btn-bilal').onclick = () => agir(
+  () => attesterDeces(compte, { contactId: 'bilal', at: t }),
+  'Bilal atteste le décès : le quorum de 2 peut être atteint (BR-A-14).',
+);
+$('btn-reset').onclick = () => initialiser();
+
+// Actions du destinataire, déléguées (§5.2).
+$('plis').addEventListener('click', (evt) => {
+  const bouton = evt.target.closest('button[data-action]');
+  if (!bouton) return;
+  const pliId = bouton.dataset.pli;
+  const actions = {
+    sas: () => {
+      const sas = ouvrirSas(compte, { pliId, at: t });
+      const notes = sas.messages.map((m) => m.note).filter(Boolean).join(' / ');
+      message(`Sas : ${sas.messages.length} message(s), note « ${notes} »`
+        + `${sas.fortImpact ? ' — fort impact : 24 h de réflexion avant ouverture (BR-D-13)' : ''}`
+        + '. Le contenu n’est pas affiché (BR-D-08).');
+    },
+    lire: () => {
+      ouvrirSas(compte, { pliId, at: t });
+      envoyerCode(compte, { pliId, code: '482913', at: t });
+      verifierCode(compte, { pliId, code: '482913', at: t });
+      const contenu = lire(compte, { pliId, at: t });
+      message('Lu : « ' + contenu.map((m) => m.texte).join(' | ') + ' » — lecture enregistrée, communiquée à personne (BR-D-12).');
+    },
+    tard: () => {
+      differer(compte, { pliId, mois: 3, at: t });
+      message('« Plus tard » : rappel demandé dans 3 mois. Aucune relance spontanée entre-temps (§7.3).');
+    },
+    refus: () => {
+      refuser(compte, { pliId, at: t });
+      message('Refus définitif : contenu conservé 12 mois au cas où, puis effacé (BR-D-11).');
+    },
+  };
+  try {
+    actions[bouton.dataset.action]();
+    tickExecution(compte, t);
+  } catch (err) {
+    message(err.message, true);
+  }
+  rendre();
+});
+
+initialiser();
+</script>
+</body>
+</html>
