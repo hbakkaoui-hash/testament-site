@@ -80,6 +80,7 @@ export function tickPublications(compte, messages, at) {
         && compte.etat !== ETATS.EN_LIQUIDATION && compte.etat !== ETATS.SUPPRIME,
       attribution: v.autorisationPublique.attribution,
       indexable: v.autorisationPublique.indexable,
+      directive: v.directivePublique || 'RETRAIT_AVEC_COMPTE', // BR-E-03
       texte: v.texte,
       titreInterne: msg.titre, // jamais publié — utile au seul modérateur
       publieeLe: null,

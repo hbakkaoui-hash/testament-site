@@ -203,21 +203,45 @@ function empreinteDe(precedent, entree, hachage) {
 }
 
 function consigner(journal, { at, type, donnees = {} }, hachage = hachageDefaut) {
-  const precedent = journal.length ? journal[journal.length - 1].empreinte : 'GENESE';
-  const entree = { seq: journal.length, at, type, donnees, precedent };
+  const dernier = journal.length ? journal[journal.length - 1] : null;
+  const precedent = dernier ? dernier.empreinte : 'GENESE';
+  // La numérotation suit la dernière entrée : elle reste monotone après une
+  // troncature, où les seq conservés ne partent plus de zéro.
+  const entree = { seq: dernier ? dernier.seq + 1 : 0, at, type, donnees, precedent };
   entree.empreinte = empreinteDe(precedent, entree, hachage);
   journal.push(entree);
   return entree;
 }
 
 function verifierJournal(journal, hachage = hachageDefaut) {
-  let precedent = 'GENESE';
+  // Un journal tronqué (BR-E-05) commence sur une entrée dont le précédent a
+  // été supprimé : on l'accepte comme ancre et on vérifie la suite.
+  let precedent = journal.length ? journal[0].precedent : 'GENESE';
   for (const entree of journal) {
     if (entree.precedent !== precedent) return { valide: false, seq: entree.seq };
     if (empreinteDe(precedent, entree, hachage) !== entree.empreinte) return { valide: false, seq: entree.seq };
     precedent = entree.empreinte;
   }
   return { valide: true };
+}
+
+// Troncature du journal après sa durée de conservation (BR-E-05).
+// Les entrées retirées laissent une ancre : la chaîne repart de l'empreinte de
+// la dernière entrée supprimée, ce qui reste vérifiable sans prétendre que rien
+// n'a été retiré.
+function tronquerJournal(journal, { avantLe, at }, hachage = hachageDefaut) {
+  const gardees = journal.filter((e) => e.at >= avantLe);
+  const retirees = journal.length - gardees.length;
+  if (retirees === 0) return 0;
+  const derniere = journal[retirees - 1];
+  journal.length = 0;
+  journal.push(...gardees);
+  consigner(journal, {
+    at,
+    type: 'JOURNAL_TRONQUE',
+    donnees: { avantLe, entreesRetirees: retirees, derniereEmpreinteRetiree: derniere.empreinte },
+  }, hachage);
+  return retirees;
 }
 
 // ——— src/core/contacts.js ———
@@ -791,6 +815,7 @@ function prochainesEcheances(compte) {
 const ETATS_MESSAGE = Object.freeze({
   BROUILLON: 'BROUILLON',
   SCELLE: 'SCELLE',
+  SUPPRIME: 'SUPPRIME', // contenu détruit par le cycle de vie (module E)
 });
 
 const TEXTE_MAX = 50_000;             // BR-B-06
@@ -816,6 +841,7 @@ function creerMessage({ id, auteurId, titre, at }) {
       fortImpact: false, // BR-B-08 : déclenche le parcours renforcé (BR-D-13)
       visibilite: 'PRIVE',        // BR-B-16 : privé par défaut, sans exception
       autorisationPublique: null, // { cocheLe, confirmeLe, attribution, indexable }
+      directivePublique: 'RETRAIT_AVEC_COMPTE', // BR-E-03 — sort après le compte
       publication: { mode: 'A_EXECUTION', dateFixe: null }, // BR-B-18 — une date
                                   // fixe peut tomber du vivant du testateur (§7.4)
       destinataires: [], // BR-B-10
@@ -951,6 +977,7 @@ function sceller(msg, at) {
     visibilite: t.visibilite,
     autorisationPublique: t.autorisationPublique ? { ...t.autorisationPublique } : null,
     publication: { ...t.publication },
+    directivePublique: t.directivePublique,
   };
   msg.versions.push(version);
   msg.etat = ETATS_MESSAGE.SCELLE;

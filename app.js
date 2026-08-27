@@ -5,7 +5,7 @@
 
 import {
   creerCompte, armer, signalS1, signalS2, attesterDeces, demarrerPause,
-  changerCadence, tick, prochainesEcheances, CADENCES_MOIS, ETATS,
+  changerCadence, tick, terminerExecution, prochainesEcheances, CADENCES_MOIS, ETATS,
 } from './src/core/compte.js';
 import {
   inviterContact, accepterInvitation, renoncerContact, refuserInvitation, contactsAcceptants,
@@ -24,6 +24,10 @@ import {
   demarrerExecution, tickExecution, ouvrirSas, envoyerCode, verifierCode,
   lire, differer, refuser, telecharger, signalerRebond, ETATS_PLI,
 } from './src/core/execution.js';
+import {
+  tickDonnees, definirDirectivePublique, demanderSuppressionCompte,
+  annulerSuppressionCompte, exporter, etatConservation, DIRECTIVES_PUBLIQUES,
+} from './src/core/donnees.js';
 import { ajouterJours, ajouterMois } from './src/core/horloge.js';
 
 const CLE = 'testament.v1';
@@ -74,7 +78,16 @@ function synchroniser() {
     demarrerExecution(etat.compte, etat.messages, { at: maintenant() });
   }
   tickExecution(etat.compte, maintenant());
+  // La vague immédiate close, le compte entre en liquidation : c'est elle qui
+  // arme l'horloge des 90 jours avant la suppression de E1 (BR-E-01).
+  if (etat.compte.etat === ETATS.EN_EXECUTION && etat.compte.execution) {
+    const vagueClose = etat.compte.execution.plis
+      .filter((p) => p.type === 'IMMEDIAT')
+      .every((p) => p.etat !== ETATS_PLI.PLANIFIE);
+    if (vagueClose) terminerExecution(etat.compte, { at: maintenant() });
+  }
   tickPublications(etat.compte, etat.messages, maintenant()); // §5.3 — soumet, ne publie jamais
+  tickDonnees(etat.compte, etat.messages, maintenant());      // §6 — conserve puis supprime
 }
 
 // ————————————————————————————————— utilitaires d'affichage
@@ -132,6 +145,7 @@ const ROUTES = [
   ['#/contacts', 'Contacts de confiance'],
   ['#/plis', 'Destinataires'],
   ['#/public', 'Public'],
+  ['#/donnees', 'Mes données'],
   ['#/journal', 'Journal'],
 ];
 // Le simulateur du protocole vit à côté de l'application : lien direct, pas une route.
@@ -183,9 +197,17 @@ function rendre() {
     '#/contacts': vueContacts,
     '#/plis': () => (param ? vueSas(param) : vuePlis()),
     '#/public': vuePublic,
+    '#/donnees': vueDonnees,
     '#/journal': vueJournal,
   };
-  vue.innerHTML = (vues[chemin] || vueTableau)();
+  try {
+    vue.innerHTML = (vues[chemin] || vueTableau)();
+  } catch (err) {
+    // Un écran qui échoue ne doit jamais laisser croire qu'on est ailleurs.
+    vue.innerHTML = `<h1>Cet écran n’a pas pu s’afficher</h1>
+      <p class="sous">${echap(err.message)}</p>
+      <div class="actions"><a class="bouton" href="#/">Retour au tableau de bord</a></div>`;
+  }
   document.getElementById('banc-date').textContent = 'date simulée : ' + fmtCourt(maintenant());
   window.scrollTo({ top: 0 });
 }
@@ -214,7 +236,8 @@ function vueTableau() {
   if (c.etat === ETATS.NOUVEAU || c.etat === ETATS.DESARME) return vueArmement();
 
   const e = prochainesEcheances(c);
-  const scelles = etat.messages.filter((m) => m.etat === ETATS_MESSAGE.SCELLE);
+  // Un message purgé par le cycle de vie n'a plus de version : on ne l'affiche pas.
+  const scelles = etat.messages.filter((m) => m.versions.length > 0);
   const prochaine = e.echeanceCadence;
   const execution = dateTheoriqueExecution();
   const urgent = [ETATS.SOLLICITATION, ETATS.ENQUETE, ETATS.PRESUME_DECEDE].includes(c.etat);
@@ -355,17 +378,18 @@ function vueArmement() {
 function vueMessages() {
   const items = etat.messages.map((m) => {
     const v = m.versions[m.versions.length - 1];
-    const scelle = m.etat === ETATS_MESSAGE.SCELLE;
+    const supprime = m.etat === ETATS_MESSAGE.SUPPRIME;
+    const scelle = Boolean(v);
     const dest = (v ? v.destinataires : m.travail.destinataires).map((d) => echap(d.prenomNom)).filter(Boolean);
     return `<div class="item">
       <div class="item-tete">
         <span class="titre">${echap(m.titre)}</span>
-        <span class="etiq ${scelle ? 'ok' : 'froid'}">${scelle ? 'scellé' : 'brouillon'}</span>
+        <span class="etiq ${supprime ? 'crit' : scelle ? 'ok' : 'froid'}">${supprime ? 'supprimé' : scelle ? 'scellé' : 'brouillon'}</span>
         ${m.travail.fortImpact ? '<span class="etiq warn">fort impact</span>' : ''}
         ${scelle && m.versions.length > 1 ? `<span class="etiq">version ${m.versions.length}</span>` : ''}
       </div>
       <div class="item-meta">${dest.length ? '→ ' + dest.join(', ') : 'aucun destinataire'}
-        · ${m.travail.texte.length} caractères
+        · ${(m.travail.texte || '').length} caractères
         ${scelle ? '· scellé le ' + fmt(v.scelleLe) : ''}</div>
       <div class="actions">
         <a class="bouton" href="#/messages/${m.id}">${scelle ? 'Relire et modifier' : 'Continuer'}</a>
@@ -410,7 +434,7 @@ function vueEditeur(id) {
       <input type="text" id="ed-titre" value="${echap(m.titre)}"></label>
     <label><span class="l">Contenu</span>
       <textarea id="ed-texte" placeholder="Ce que vous n’avez pas pu dire…">${echap(t.texte)}</textarea>
-      <span class="aide">${t.texte.length} / 50 000 caractères (BR-B-06)</span></label>
+      <span class="aide">${(t.texte || '').length} / 50 000 caractères (BR-B-06)</span></label>
     <label><span class="l">Note d’introduction — 200 caractères (BR-B-07)</span>
       <input type="text" id="ed-note" maxlength="200" value="${echap(t.note)}"
         placeholder="Affichée au destinataire avant qu’il n’ouvre le message">
@@ -462,6 +486,19 @@ function vueEditeur(id) {
     <div class="case"><input type="checkbox" id="ed-indexable"${t.autorisationPublique && t.autorisationPublique.indexable ? ' checked' : ''}>
       <span>Autoriser les moteurs de recherche à indexer ce message. Case volontairement distincte
       de l’autorisation de publication (BR-D-19).</span></div>
+    <label><span class="l">Après la suppression de mon compte, ces mots seront… (BR-E-03)</span>
+      <select id="ed-directive">
+        ${DIRECTIVES_PUBLIQUES.map((d) => {
+          const libelle = {
+            RETRAIT_AVEC_COMPTE: 'retirés en même temps que mon compte (défaut)',
+            ARCHIVE_ATTRIBUEE: 'archivés, signés de mon nom',
+            ARCHIVE_ANONYMISEE: 'archivés, mais anonymisés',
+          }[d];
+          return `<option value="${d}"${t.directivePublique === d ? ' selected' : ''}>${libelle}</option>`;
+        }).join('')}
+      </select>
+      <span class="aide">Un texte qui vous identifie de lui-même (« moi, maire de… ») ne peut pas
+      être anonymisé : l’archive anonyme le refusera plutôt que de faire semblant (BR-E-04).</span></label>
   </div>
 
   <div class="carte">
@@ -696,6 +733,92 @@ function vuePublic() {
   </div>`;
 }
 
+// ————————————————————————————————— vue : mes données (module E, §6)
+
+const LIBELLE_DIRECTIVE = {
+  RETRAIT_AVEC_COMPTE: 'retirées en même temps que mon compte',
+  ARCHIVE_ATTRIBUEE: 'archivées, signées de mon nom',
+  ARCHIVE_ANONYMISEE: 'archivées, mais anonymisées',
+};
+
+function vueDonnees() {
+  const c = etat.compte;
+  const vue = etatConservation(c, maintenant());
+  const suppression = c.suppressionDemandee;
+
+  const differes = vue.e2.length ? vue.e2.map((e) => `<div class="item">
+      <div class="item-tete"><span class="titre">${echap(e.message)}</span>
+        <span class="etiq froid">en attente</span></div>
+      <div class="item-meta">délivrance le ${fmt(e.dateFixe)} · conservé jusqu’au ${fmt(e.conservationFinAt)}</div>
+    </div>`).join('') : '<p class="vide">Aucun message différé en réserve.</p>';
+
+  const archives = vue.e3.length ? vue.e3.map((e) => `<div class="item">
+      <div class="item-tete"><span class="titre">${echap(e.message)}</span>
+        <span class="etiq ${e.attribution === 'ANONYME' ? 'froid' : 'ok'}">${e.attribution === 'ANONYME' ? 'anonymisé' : 'attribué'}</span></div>
+    </div>`).join('') : '<p class="vide">Aucune archive publique.</p>';
+
+  return `
+  <h1>Mes données</h1>
+  <p class="sous">Ce que le service garde, ce qu’il détruit, et quand. Quatre ensembles
+  au sort différent : votre compte, les messages encore à venir, ce qui a été publié,
+  et le journal des décisions.</p>
+
+  ${suppression ? `<div class="alerte rouge">
+    <b>Suppression de votre compte demandée.</b>
+    <p>Elle deviendra définitive le ${fmt(suppression.effectiveAt)}. D’ici là, vous pouvez
+    encore revenir en arrière — ce délai de 72 heures existe pour vous protéger d’une
+    prise de contrôle de votre boîte mail (BR-A-06).</p>
+    <div class="actions"><button class="principal" data-action="annuler-suppression">Annuler la suppression</button></div>
+  </div>` : ''}
+
+  <div class="statut">
+    <div><span class="l">E1 · compte et messages privés</span>
+      <span class="v ${vue.e1.statut === 'SUPPRIME' ? 'crit' : 'ok'}">${vue.e1.statut === 'SUPPRIME' ? 'supprimé' : 'présent'}</span>
+      <span class="p">${vue.e1.statut === 'SUPPRIME'
+        ? 'le ' + fmt(vue.e1.le) + ' · sauvegardes purgées avant le ' + fmt(vue.e1.sauvegardesPurgeesAvant)
+        : vue.e1.suppressionLe ? 'suppression prévue le ' + fmt(vue.e1.suppressionLe) : '90 jours après l’exécution'}</span></div>
+    <div><span class="l">E2 · messages différés</span><span class="v">${vue.e2.length}</span>
+      <span class="p">conservés hors du compte, jusqu’à leur date</span></div>
+    <div><span class="l">E3 · publications</span><span class="v">${vue.e3.length}</span>
+      <span class="p">archivées selon vos directives</span></div>
+    <div><span class="l">E4 · journal</span><span class="v">${vue.e4.entrees}</span>
+      <span class="p">faits et dates seulement, conservés 5 ans</span></div>
+  </div>
+
+  <div class="carte">
+    <p class="carte-titre">E2 — ce qui survivra à mon compte (BR-B-20)</p>
+    <div class="liste">${differes}</div>
+    <p class="item-meta" style="margin-top:.7rem">Un message programmé à une date lointaine
+    est conservé dans un magasin séparé, réduit au strict nécessaire : le texte, le
+    destinataire, la date. Un incident sur le reste du compte ne peut pas l’emporter.</p>
+  </div>
+
+  <div class="carte">
+    <p class="carte-titre">E3 — mes messages publics après moi</p>
+    <div class="liste">${archives}</div>
+    <p class="item-meta" style="margin-top:.7rem">Le sort de chaque message public se choisit
+    de votre vivant, dans l’éditeur du message. Aucun réglage ne verse par défaut à l’archive
+    (BR-E-03), et un texte qui reste identifiant par lui-même ne peut pas être faussement
+    anonymisé (BR-E-04).</p>
+  </div>
+
+  <div class="carte">
+    <p class="carte-titre">Emporter mes données (BR-E-07)</p>
+    <p>Un dossier ouvert, lisible sans ce service : vos messages en texte et en HTML,
+    et un index JSON de tout le reste.</p>
+    <div class="actions"><button data-action="exporter">Télécharger mes données</button></div>
+  </div>
+
+  <div class="carte">
+    <p class="carte-titre">Supprimer mon compte (BR-E-06)</p>
+    <p>Immédiat, sauf un délai de rétractation de 72 heures. Tous les messages non
+    délivrés sont détruits — définitivement.</p>
+    <div class="actions">
+      <button class="danger" data-action="supprimer-compte"${suppression ? ' disabled' : ''}>Demander la suppression</button>
+    </div>
+  </div>`;
+}
+
 // ————————————————————————————————— vue : journal (PD-7)
 
 function vueJournal() {
@@ -741,6 +864,7 @@ function enregistrerBrouillon(id) {
     } else {
       programmerPublication(m, { mode: 'A_EXECUTION', at: maintenant() });
     }
+    if (val('ed-directive')) definirDirectivePublique(m, val('ed-directive'));
   } else if (m.travail.visibilite === 'PUBLIC') {
     revoquerPublication(m);
   }
@@ -856,6 +980,30 @@ Object.assign(ACTIONS, {
   },
   rebond: (id) => agir(() => signalerRebond(etat.compte, { pliId: id, at: maintenant() }),
     'Rebond permanent simulé : 3 nouvelles tentatives sur 30 jours, puis bascule sur le destinataire de secours (BR-D-07).'),
+});
+
+// — cycle de vie des données (§6)
+Object.assign(ACTIONS, {
+  exporter: () => {
+    const paquet = exporter(etat.compte, etat.messages, maintenant());
+    const separateur = String.fromCharCode(10) + '————— ';
+    const contenu = paquet.fichiers
+      .filter((f) => f.chemin.endsWith('.txt') || f.chemin.endsWith('.json'))
+      .map((f) => separateur + f.chemin + ' —————' + String.fromCharCode(10) + f.contenu)
+      .join(String.fromCharCode(10, 10));
+    const url = URL.createObjectURL(new Blob([contenu], { type: 'text/plain;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = 'mes-donnees-testament.txt'; a.click();
+    URL.revokeObjectURL(url);
+    notifier(`Export de ${paquet.index.messages.length} message(s) et du journal — format ouvert (BR-E-07).`);
+  },
+  'supprimer-compte': () => {
+    if (!confirm('Demander la suppression définitive du compte ? Vous aurez 72 heures pour revenir en arrière.')) return;
+    agir(() => demanderSuppressionCompte(etat.compte, { at: maintenant(), auth: { deuxFacteurs: true } }),
+      'Suppression demandée. Elle deviendra définitive dans 72 heures — avancez le temps pour la voir s’exécuter.');
+  },
+  'annuler-suppression': () => agir(() => annulerSuppressionCompte(etat.compte, { at: maintenant() }),
+    'Suppression annulée. Rien n’a été détruit.'),
 });
 
 // — modération et publication (§5.3)

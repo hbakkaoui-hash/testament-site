@@ -8,6 +8,7 @@ import { ajouterJours, ajouterMois } from './horloge.js';
 export const ETATS_MESSAGE = Object.freeze({
   BROUILLON: 'BROUILLON',
   SCELLE: 'SCELLE',
+  SUPPRIME: 'SUPPRIME', // contenu détruit par le cycle de vie (module E)
 });
 
 const TEXTE_MAX = 50_000;             // BR-B-06
@@ -33,6 +34,7 @@ export function creerMessage({ id, auteurId, titre, at }) {
       fortImpact: false, // BR-B-08 : déclenche le parcours renforcé (BR-D-13)
       visibilite: 'PRIVE',        // BR-B-16 : privé par défaut, sans exception
       autorisationPublique: null, // { cocheLe, confirmeLe, attribution, indexable }
+      directivePublique: 'RETRAIT_AVEC_COMPTE', // BR-E-03 — sort après le compte
       publication: { mode: 'A_EXECUTION', dateFixe: null }, // BR-B-18 — une date
                                   // fixe peut tomber du vivant du testateur (§7.4)
       destinataires: [], // BR-B-10
@@ -168,6 +170,7 @@ export function sceller(msg, at) {
     visibilite: t.visibilite,
     autorisationPublique: t.autorisationPublique ? { ...t.autorisationPublique } : null,
     publication: { ...t.publication },
+    directivePublique: t.directivePublique,
   };
   msg.versions.push(version);
   msg.etat = ETATS_MESSAGE.SCELLE;
