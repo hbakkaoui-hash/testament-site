@@ -12,7 +12,7 @@ import {
 } from './src/core/contacts.js';
 import {
   creerMessage, definirTexte, definirNote, marquerFortImpact, ajouterDestinataire,
-  definirSecours, programmerDateFixe, revenirImmediate, sceller,
+  definirSecours, programmerDateFixe, revenirImmediate, sceller, ajouterGroupe, groupesDe,
   demanderPublication, confirmerPublication, revoquerPublication, programmerPublication,
   ETATS_MESSAGE,
 } from './src/core/message.js';
@@ -24,6 +24,10 @@ import {
   demarrerExecution, tickExecution, ouvrirSas, envoyerCode, verifierCode,
   lire, differer, refuser, telecharger, signalerRebond, ETATS_PLI,
 } from './src/core/execution.js';
+import {
+  deposerReflexion, modererReflexion, reflexionsPubliques, fileModerationReflexions,
+  definirReflexions, signalerContenu, fileSignalements, traiterSignalement,
+} from './src/core/reflexions.js';
 import {
   tickDonnees, definirDirectivePublique, demanderSuppressionCompte,
   annulerSuppressionCompte, exporter, etatConservation, DIRECTIVES_PUBLIQUES,
@@ -454,6 +458,9 @@ function vueEditeur(id) {
       <label><span class="l">&nbsp;</span><button data-action="ajouter-destinataire" data-id="${m.id}">Ajouter ce destinataire</button></label>
     </div>
     <p class="item-meta">Le destinataire n’est jamais averti de son vivant du testateur (BR-B-11).</p>
+    <div class="actions"><button data-action="ajouter-groupe" data-id="${m.id}">Ajouter un groupe…</button></div>
+    <p class="item-meta">Un groupe est une liste nommée : chacun reçoit son propre accès, jamais en copie
+    visible des autres (BR-B-15).${groupesDe(m).length ? ' Groupes : ' + groupesDe(m).map((g) => echap(g.nom) + ' (' + g.membres + ')').join(', ') + '.' : ''}</p>
   </div>
 
   <div class="carte">
@@ -672,6 +679,18 @@ function vuePublic() {
       <div class="actions">
         <button data-action="retirer-publication" data-id="${p.messageId}">Retirer de la publication</button>
         <button data-action="demander-retrait" data-id="${p.messageId}">Demande de retrait d’un tiers mentionné</button>
+        <button data-action="basculer-reflexions" data-id="${p.messageId}">${p.reflexionsDesactivees ? 'Rouvrir les réflexions' : 'Fermer les réflexions'}</button>
+      </div>
+      <div class="reflexions">
+        <p class="carte-titre" style="margin:.9rem 0 .5rem">Réflexions ${p.reflexionsDesactivees ? '— fermées par l’auteur (BR-D-23)' : ''}</p>
+        ${reflexionsPubliques(c, p.messageId).map((r) => `<blockquote class="reflexion">
+            <p>${echap(r.texte)}</p>
+            <footer>${echap(r.auteur || 'un lecteur')} · ${fmt(r.publieeLe)}
+              <button class="lien" data-action="signaler-reflexion" data-id="${p.messageId}">signaler</button></footer>
+          </blockquote>`).join('') || '<p class="vide">Aucune réflexion publiée.</p>'}
+        ${p.reflexionsDesactivees ? '' : `<div class="actions">
+          <button data-action="deposer-reflexion" data-id="${p.messageId}">Déposer une réflexion</button>
+        </div>`}
       </div>
     </div>`;
   }).join('');
@@ -730,6 +749,29 @@ function vuePublic() {
     et un refus ne supprime rien en silence : le message bascule en privé vers vos contacts de
     confiance, avec le motif (BR-D-17).</p>
     <div class="liste">${file || '<p class="vide">File vide.</p>'}</div>
+
+    <p class="carte-titre" style="margin-top:1.4rem">Réflexions en attente (BR-D-21)</p>
+    <div class="liste">${fileModerationReflexions(c).map((r) => `<div class="item">
+        <div class="item-tete"><span class="titre">${echap(r.auteur.pseudo || r.auteur.id)}</span>
+          <span class="etiq warn">en relecture</span>
+          <span class="item-meta">déposée le ${fmt(r.deposeeLe)}</span></div>
+        <p style="margin:.3rem 0 0">${echap(r.texte)}</p>
+        <div class="actions">
+          <button class="principal" data-action="reflexion-accepte" data-id="${r.id}">Publier</button>
+          <button class="danger" data-action="reflexion-rejette" data-id="${r.id}">Rejeter…</button>
+        </div>
+      </div>`).join('') || '<p class="vide">Aucune réflexion en attente.</p>'}</div>
+
+    <p class="carte-titre" style="margin-top:1.4rem">Signalements — les graves en 24 h (BR-D-25)</p>
+    <div class="liste">${fileSignalements(c).map((sig) => `<div class="item">
+        <div class="item-tete"><span class="titre">${sig.categorie.toLowerCase().replace('_', ' ')}</span>
+          <span class="etiq ${sig.grave ? 'crit' : 'warn'}">${sig.grave ? 'grave' : 'ordinaire'}</span>
+          <span class="item-meta">${sig.cible === 'REFLEXION' ? 'réflexion' : 'message public'} · à traiter avant le ${fmt(sig.traiterAvant)}</span></div>
+        <div class="actions">
+          <button class="danger" data-action="signalement-retirer" data-id="${sig.id}" data-index="${sig.cible}">Retirer le contenu…</button>
+          <button data-action="signalement-classer" data-id="${sig.id}" data-index="${sig.cible}">Classer sans suite</button>
+        </div>
+      </div>`).join('') || '<p class="vide">Aucun signalement.</p>'}</div>
   </div>`;
 }
 
@@ -931,6 +973,22 @@ const ACTIONS = {
       relation: val('ed-dest-rel') || null,
     });
   }, 'Destinataire ajouté. Il n’en sera jamais averti de votre vivant (BR-B-11).'),
+  'ajouter-groupe': (id) => {
+    const nom = prompt('Nom du groupe :', 'La famille');
+    if (!nom) return;
+    const liste = prompt('Adresses, séparées par des virgules :', 'nour@exemple.org, sami@exemple.org');
+    if (!liste) return;
+    agir(() => {
+      enregistrerBrouillon(id);
+      ajouterGroupe(message(id), {
+        nom,
+        membres: liste.split(',').map((mail) => {
+          const email = mail.trim();
+          return { prenomNom: email.split('@')[0], email };
+        }),
+      });
+    }, 'Groupe ajouté. La délivrance restera individuelle (BR-B-15).');
+  },
   'retirer-destinataire': (id, index) => agir(() => {
     enregistrerBrouillon(id);
     message(id).travail.destinataires.splice(Number(index), 1);
@@ -980,6 +1038,53 @@ Object.assign(ACTIONS, {
   },
   rebond: (id) => agir(() => signalerRebond(etat.compte, { pliId: id, at: maintenant() }),
     'Rebond permanent simulé : 3 nouvelles tentatives sur 30 jours, puis bascule sur le destinataire de secours (BR-D-07).'),
+});
+
+// — réflexions publiques et signalements (§5.3)
+Object.assign(ACTIONS, {
+  'deposer-reflexion': (id) => {
+    const texte = prompt('Votre réflexion — elle passera par une relecture humaine avant d’être visible :', '');
+    if (!texte) return;
+    agir(() => deposerReflexion(etat.compte, {
+      messageId: id,
+      // Le dépôt anonyme est impossible (BR-D-22) : ici, un compte vérifié est simulé.
+      auteur: { id: 'lecteur-demo', pseudo: 'Un lecteur', compteVerifie: true },
+      texte, at: maintenant(),
+    }), 'Réflexion déposée. Elle ne paraîtra qu’après relecture humaine (BR-D-21).');
+  },
+  'reflexion-accepte': (id) => agir(
+    () => modererReflexion(etat.compte, { reflexionId: id, decision: 'ACCEPTE', moderateur: 'moderateur-demo', at: maintenant() }),
+    'Réflexion publiée.'),
+  'reflexion-rejette': (id) => {
+    const motif = prompt('Motif du rejet (obligatoire) :', 'propos déplacés');
+    if (!motif) return;
+    agir(() => modererReflexion(etat.compte, { reflexionId: id, decision: 'REJETE', motif, moderateur: 'moderateur-demo', at: maintenant() }),
+      'Réflexion rejetée, avec motif.');
+  },
+  'basculer-reflexions': (id) => {
+    const p = (etat.compte.publications || []).find((x) => x.messageId === id);
+    agir(() => definirReflexions(etat.compte, { messageId: id, actives: Boolean(p && p.reflexionsDesactivees) }),
+      'Réglage des réflexions modifié. Après l’exécution, il deviendra définitif (BR-D-23).');
+  },
+  'signaler-reflexion': (id) => {
+    const reflexions = (etat.compte.reflexions || []).filter((r) => r.messageId === id && r.etat === 'PUBLIEE');
+    if (!reflexions.length) return;
+    const categorie = prompt('Catégorie : HAINE, HARCELEMENT, CONTENU_ILLICITE, ATTEINTE_VIE_PRIVEE, AUTRE', 'HAINE');
+    if (!categorie) return;
+    agir(() => signalerContenu(etat.compte, {
+      cible: 'REFLEXION', id: reflexions[reflexions.length - 1].id,
+      categorie, par: 'lecteur-demo', at: maintenant(),
+    }), 'Signalement enregistré. Les catégories graves sont traitées en 24 heures (BR-D-25).');
+  },
+  'signalement-retirer': (id, cible) => {
+    const motif = prompt('Motif du retrait (obligatoire) :', 'contenu manifestement illicite');
+    if (!motif) return;
+    agir(() => traiterSignalement(etat.compte, { cible, id, retirer: true, motif, moderateur: 'moderateur-demo', at: maintenant() }),
+      'Contenu retiré, avec motif.');
+  },
+  'signalement-classer': (id, cible) => agir(
+    () => traiterSignalement(etat.compte, { cible, id, retirer: false, moderateur: 'moderateur-demo', at: maintenant() }),
+    'Signalement classé sans suite, et journalisé.'),
 });
 
 // — cycle de vie des données (§6)

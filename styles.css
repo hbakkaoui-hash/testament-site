@@ -190,3 +190,12 @@ footer.pied {
   color: var(--muted); font-size: .84rem; border-top: 1px solid var(--line);
 }
 footer.pied b { color: var(--ink); }
+
+/* réflexions publiques — aucune métrique, aucun classement (BR-D-24) */
+.reflexions { border-top: 1px solid var(--line); margin-top: .9rem; }
+blockquote.reflexion {
+  margin: 0 0 .5rem; padding: .6rem .9rem; background: var(--paper);
+  border-left: 2px solid var(--line-strong); border-radius: 2px;
+}
+blockquote.reflexion p { margin: 0; }
+blockquote.reflexion footer { margin-top: .3rem; color: var(--muted); font-size: .8rem; }

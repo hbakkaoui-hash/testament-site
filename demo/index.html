@@ -927,6 +927,32 @@ function ajouterDestinataire(msg, {
   msg.travail.destinataires.push({ prenomNom, email, tel, langue, relation, mineur, adulteReferent });
 }
 
+// BR-B-15 : un groupe est une liste nommée. La délivrance reste individuelle —
+// chaque destinataire reçoit son propre accès, jamais en copie visible. C'est
+// pour cela que le groupe est développé ici, dès l'ajout : plus bas dans la
+// chaîne, il n'existe plus que des destinataires.
+function ajouterGroupe(msg, { nom, membres, langue = 'fr' }) {
+  if (!nom || !nom.trim()) throw new Error('un groupe porte un nom (BR-B-15)');
+  if (!Array.isArray(membres) || membres.length === 0) throw new Error('groupe vide');
+  for (const membre of membres) {
+    if (!membre.email) throw new Error('email obligatoire pour chaque membre (BR-B-10)');
+    msg.travail.destinataires.push({
+      prenomNom: membre.prenomNom, email: membre.email, tel: membre.tel || null,
+      langue: membre.langue || langue, relation: membre.relation || null,
+      mineur: Boolean(membre.mineur), adulteReferent: membre.adulteReferent || null,
+      groupe: nom,
+    });
+  }
+  return msg.travail.destinataires.filter((d) => d.groupe === nom).length;
+}
+
+function groupesDe(msg) {
+  const noms = new Set(msg.travail.destinataires.map((d) => d.groupe).filter(Boolean));
+  return [...noms].map((nom) => ({
+    nom, membres: msg.travail.destinataires.filter((d) => d.groupe === nom).length,
+  }));
+}
+
 // BR-B-13 : destinataire de secours, par message.
 function definirSecours(msg, { prenomNom, email, tel = null, langue = 'fr' }) {
   if (!email) throw new Error('email du destinataire de secours obligatoire (BR-B-13)');
