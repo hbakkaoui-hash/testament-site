@@ -25,6 +25,10 @@ import {
   lire, differer, refuser, telecharger, signalerRebond, ETATS_PLI,
 } from './src/core/execution.js';
 import {
+  designerExecuteur, retirerExecuteur, reporterExecution, fenetreDeReport,
+  demanderSuspension, confirmerSuspension, fournirCoordonnees, apercuPourExecuteur, POUVOIRS,
+} from './src/core/executeur.js';
+import {
   deposerReflexion, modererReflexion, reflexionsPubliques, fileModerationReflexions,
   definirReflexions, signalerContenu, fileSignalements, traiterSignalement,
 } from './src/core/reflexions.js';
@@ -530,6 +534,7 @@ function vueEditeur(id) {
 
 function vueContacts() {
   const c = etat.compte;
+  const acceptants = c.contacts.filter((ct) => ct.statut === 'ACCEPTANT');
   const items = c.contacts.map((ct) => {
     const etiq = { EN_ATTENTE: ['froid', 'invitation envoyée'], ACCEPTANT: ['ok', 'acceptant'], RENONCE: ['crit', 'a renoncé'] }[ct.statut];
     return `<div class="item">
@@ -560,6 +565,33 @@ function vueContacts() {
     <div class="actions"><button class="principal" data-action="inviter-contact">Inviter ce contact</button></div>
     <p class="item-meta" style="margin-top:.8rem">Tant qu’une personne n’a pas accepté explicitement, elle ne compte pas dans le quorum (BR-A-11).
     Ici l’acceptation est simulée d’un clic ; dans le produit réel, elle passe par un lien vérifié.</p>
+  </div>
+
+  <div class="carte">
+    <p class="carte-titre">Exécuteur numérique (§2.4)</p>
+    <p>Un de vos contacts peut recevoir des pouvoirs de supervision — un par un, aucun par défaut.
+    Il ne pourra <b>jamais</b> lire un message, en créer un, en modifier un, ni ajouter un destinataire
+    (BR-A-20). Il surveille la mécanique, il n’accède pas au fond.</p>
+    ${acceptants.length ? `
+    <label><span class="l">Qui</span>
+      <select id="ex-contact">
+        ${acceptants.map((ct) => `<option value="${ct.id}"${c.executeur && c.executeur.contactId === ct.id ? ' selected' : ''}>${echap(ct.nom)}</option>`).join('')}
+      </select></label>
+    ${POUVOIRS.map((pouvoir) => {
+      const libelle = {
+        REPORT: 'Reporter l’exécution de 1 à 12 mois',
+        SUSPENSION: 'Suspendre définitivement un message avant sa délivrance — seul pouvoir destructeur, à n’accorder qu’en connaissance de cause (BR-A-22)',
+        COORDONNEES: 'Fournir les coordonnées manquantes d’un destinataire',
+        JOURNAL: 'Recevoir le journal d’exécution',
+      }[pouvoir];
+      const actif = c.executeur && c.executeur.pouvoirs[pouvoir];
+      return `<div class="case"><input type="checkbox" id="ex-${pouvoir}"${actif ? ' checked' : ''}>
+        <span>${libelle}</span></div>`;
+    }).join('')}
+    <div class="actions">
+      <button class="principal" data-action="designer-executeur">${c.executeur ? 'Mettre à jour les pouvoirs' : 'Désigner cet exécuteur'}</button>
+      ${c.executeur ? '<button class="danger" data-action="retirer-executeur">Retirer ce rôle</button>' : ''}
+    </div>` : '<p class="vide">Désignez d’abord un contact de confiance acceptant.</p>'}
   </div>`;
 }
 
@@ -569,11 +601,26 @@ const LIBELLE_PLI = {
   PLANIFIE: ['froid', 'en attente d’envoi'], NOTIFIE: ['warn', 'notifié'],
   SAS_OUVERT: ['warn', 'sas ouvert'], LU: ['ok', 'lu'], REFUSE: ['crit', 'refusé'],
   NON_DELIVRE: ['crit', 'non délivré'], EXPIRE: ['crit', 'lien expiré'], EFFACE: ['crit', 'effacé'],
+  SUSPENDU: ['crit', 'suspendu par l’exécuteur'],
 };
 
 function vuePlis() {
   const ex = etat.compte.execution;
   if (!ex) return '<h1>Aucune délivrance en cours</h1><p>Cette page apparaît lorsque l’exécution a démarré.</p>';
+  const executeur = etat.compte.executeur;
+  const pouvoir = (nom) => Boolean(executeur && executeur.pouvoirs[nom]);
+  const fenetre = fenetreDeReport(etat.compte);
+  const apercu = pouvoir('JOURNAL') ? apercuPourExecuteur(etat.compte) : null;
+  const bandeauExecuteur = executeur ? `<div class="alerte">
+      <b>Exécuteur numérique : ${echap((etat.compte.contacts.find((ct) => ct.id === executeur.contactId) || {}).nom || executeur.contactId)}</b>
+      <p>Pouvoirs accordés : ${POUVOIRS.filter((x) => executeur.pouvoirs[x]).map((x) => x.toLowerCase()).join(', ') || 'aucun'}.
+      Il ne peut ni lire, ni modifier, ni ajouter un destinataire (BR-A-20).
+      ${apercu ? ' État vu par lui : ' + Object.entries(apercu.parEtat).map(([k, v]) => v + ' ' + (LIBELLE_PLI[k] ? LIBELLE_PLI[k][1] : k)).join(', ') + '.' : ''}</p>
+      ${fenetre && !ex.reportePar && maintenant() < fenetre.jusquau ? `<div class="actions">
+        <button data-action="reporter-execution">Reporter l’exécution…</button>
+      </div><p class="item-meta">Prévenu le ${fmt(fenetre.prevenuLe)}, il peut reporter jusqu’au ${fmt(fenetre.jusquau)} (BR-D-05).</p>` : ''}
+      ${ex.reportePar ? `<p class="item-meta">Exécution reportée de ${ex.reportePar.mois} mois le ${fmt(ex.reportePar.at)}.</p>` : ''}
+    </div>` : '';
   const items = ex.plis.map((p) => {
     const [cls, lib] = LIBELLE_PLI[p.etat];
     const ouvrable = [ETATS_PLI.NOTIFIE, ETATS_PLI.SAS_OUVERT, ETATS_PLI.LU].includes(p.etat);
@@ -586,6 +633,12 @@ function vuePlis() {
         ${ouvrable ? `<a class="bouton" href="#/plis/${p.id}">Ouvrir comme destinataire</a>` : ''}
         ${[ETATS_PLI.NOTIFIE, ETATS_PLI.SAS_OUVERT].includes(p.etat)
           ? `<button data-action="rebond" data-id="${p.id}">Simuler un rebond permanent</button>` : ''}
+        ${pouvoir('SUSPENSION') && p.etat === ETATS_PLI.PLANIFIE
+          ? (p.suspensionDemandee
+            ? `<button class="danger" data-action="confirmer-suspension" data-id="${p.id}">Confirmer la suspension${maintenant() < p.suspensionDemandee.confirmableAt ? ' (dans ' + Math.ceil((p.suspensionDemandee.confirmableAt - maintenant()) / 3600000) + ' h)' : ''}</button>`
+            : `<button data-action="suspendre-pli" data-id="${p.id}">Suspendre (exécuteur)</button>`) : ''}
+        ${pouvoir('COORDONNEES') && [ETATS_PLI.NON_DELIVRE, ETATS_PLI.EXPIRE].includes(p.etat)
+          ? `<button data-action="fournir-coordonnees" data-id="${p.id}">Corriger l’adresse (exécuteur)</button>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -596,6 +649,7 @@ function vuePlis() {
   notifications pour le même défunt (BR-D-03). Les contacts de confiance ont été prévenus le
   ${fmt(ex.demarreeLe)}, sept jours avant les destinataires, pour qu’un humain puisse annoncer
   la nouvelle avant l’automate (A-7).</p>
+  ${bandeauExecuteur}
   <div class="liste">${items}</div>`;
 }
 
@@ -1038,6 +1092,42 @@ Object.assign(ACTIONS, {
   },
   rebond: (id) => agir(() => signalerRebond(etat.compte, { pliId: id, at: maintenant() }),
     'Rebond permanent simulé : 3 nouvelles tentatives sur 30 jours, puis bascule sur le destinataire de secours (BR-D-07).'),
+});
+
+// — exécuteur numérique (§2.4)
+Object.assign(ACTIONS, {
+  'designer-executeur': () => {
+    const pouvoirs = {};
+    for (const pouvoir of POUVOIRS) pouvoirs[pouvoir] = coche('ex-' + pouvoir);
+    if (pouvoirs.SUSPENSION && !confirm(
+      'Le pouvoir de suspension est irréversible : votre exécuteur pourra détruire un message '
+      + 'avant qu’il ne parte, par exemple celui destiné à quelqu’un qu’il n’aime pas. L’accorder ?')) {
+      return;
+    }
+    agir(() => designerExecuteur(etat.compte, { contactId: val('ex-contact'), pouvoirs, at: maintenant() }),
+      'Exécuteur désigné. Chaque pouvoir a été accordé explicitement — aucun ne l’est par défaut (BR-A-18).');
+  },
+  'retirer-executeur': () => agir(() => retirerExecuteur(etat.compte, { at: maintenant() }),
+    'Rôle retiré. Les pouvoirs disparaissent avec lui.'),
+  'reporter-execution': () => {
+    const mois = Number(prompt('Reporter l’exécution de combien de mois ? (1 à 12)', '3'));
+    if (!mois) return;
+    agir(() => reporterExecution(etat.compte, { mois, at: maintenant() }),
+      `Exécution reportée de ${mois} mois. Les autres contacts en sont informés (BR-A-21).`);
+  },
+  'suspendre-pli': (id) => agir(() => demanderSuspension(etat.compte, { pliId: id, at: maintenant() }),
+    'Suspension demandée. Elle exige une confirmation 48 heures plus tard, et sera irréversible (BR-A-22).'),
+  'confirmer-suspension': (id) => {
+    if (!confirm('Confirmer la suspension ? Le message sera détruit et ne partira jamais.')) return;
+    agir(() => confirmerSuspension(etat.compte, { pliId: id, at: maintenant() }),
+      'Message suspendu définitivement.');
+  },
+  'fournir-coordonnees': (id) => {
+    const email = prompt('Nouvelle adresse pour ce destinataire :', 'nouvelle@exemple.org');
+    if (!email) return;
+    agir(() => fournirCoordonnees(etat.compte, { pliId: id, email, at: maintenant() }),
+      'Canal réparé : le destinataire ne change pas, seule son adresse est corrigée (BR-A-19 c).');
+  },
 });
 
 // — réflexions publiques et signalements (§5.3)
