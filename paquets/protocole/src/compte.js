@@ -38,13 +38,26 @@ const LIQUIDATION_JOURS = 90;                        // BR-E-01
 const PAUSE_MAX_MOIS = 12;                           // BR-C-07
 const PAUSE_RENOUVELLEMENTS_MAX = 1;
 const ATTESTATION_INTERVALLE_MOIS = 12;              // BR-C-14
+const INDISPONIBILITE_SEUIL_JOURS = 7;               // BR-C-13 : au-delà, les compteurs sont décalés
 const CANAUX = ['email', 'email2', 'push', 'sms'];
+
+// Les délais que le sas re-vérifie par un autre chemin (AD-12). Les chiffres
+// n'existent qu'ici (AP-7) ; le code qui les applique, lui, est distinct.
+export const DELAIS = Object.freeze({ GRACE_JOURS, PLANCHER_INACTIVITE_MOIS });
 
 const SIGNAUX_S1 = new Set(['CONNEXION', 'LIEN_SIGNE', 'ACTION_APP']); // S1 — preuve forte
 const ETATS_IRREVERSIBLES = [ETATS.EN_EXECUTION, ETATS.EXECUTE, ETATS.EN_LIQUIDATION, ETATS.SUPPRIME];
 const ETATS_PROTOCOLE = [ETATS.ARME, ETATS.SOLLICITATION, ETATS.ENQUETE, ETATS.VEILLE_LONGUE, ETATS.PRESUME_DECEDE];
+// Comptes dont le protocole court : chacun doit avoir une échéance future (AD-8).
+export const ETATS_SOUS_PROTOCOLE = Object.freeze([...ETATS_PROTOCOLE, ETATS.EN_PAUSE]);
 
-export function creerCompte({ id, at, cadenceMois = 6, hachage } = {}) {
+// Les garde-fous du socle serveur sont portés par le compte lui-même (§11) :
+// - preuveDeRemise (AD-13) : pas d'enquête ni de présomption accélérée sans
+//   sollicitations effectivement remises sur deux canaux distincts ;
+// - sasExecution (AD-12) : la fin de la grâce DEMANDE l'exécution, seule une
+//   confirmation passée par le sas la fait démarrer.
+// Désactivés pour le prototype local, qui n'a pas de fournisseur d'envoi.
+export function creerCompte({ id, at, cadenceMois = 6, hachage, preuveDeRemise = false, sasExecution = false } = {}) {
   if (!CADENCES_MOIS.includes(cadenceMois)) {
     throw new Error(`cadence de check-in parmi ${CADENCES_MOIS.join('/')} mois (4.2)`);
   }
@@ -52,9 +65,11 @@ export function creerCompte({ id, at, cadenceMois = 6, hachage } = {}) {
     id,
     creeLe: at,
     etat: ETATS.NOUVEAU,
-    regles: { cadenceMois },
+    regles: { cadenceMois, preuveDeRemise: preuveDeRemise === true, sasExecution: sasExecution === true },
     armement: null,        // { at, canauxVerifies, messagesScelles }
     derniereS1: null,
+    decalageS1: 0,         // jours neutralisés par incident depuis la dernière S1 (BR-C-13)
+    indisponibilites: [],  // identifiants des incidents déjà pris en compte
     vivantSuccessifs: 0,   // réponses « il va bien » sans S1 entre elles
     cycle: null,           // { debut, decalage, s2Utilise, relances, enqueteOuverte }
     veille: null,          // { ouverteLe, prochaineEnquete, enquete: {decisionAt}|null }
@@ -67,12 +82,19 @@ export function creerCompte({ id, at, cadenceMois = 6, hachage } = {}) {
     journal: [],
     _hachage: hachage,
   };
-  noterCompte(compte, at, 'COMPTE_CREE', { cadenceMois });
+  noterCompte(compte, at, 'COMPTE_CREE', { id, cadenceMois, preuveDeRemise: compte.regles.preuveDeRemise, sasExecution: compte.regles.sasExecution });
   return compte;
 }
 
 function noterCompte(compte, at, type, donnees = {}) {
   consigner(compte.journal, { at, type, donnees }, compte._hachage);
+}
+
+// Échéance comptée depuis le dernier signe de vie : `mois` calendaires, plus
+// les jours neutralisés par un incident. La date de la S1 elle-même n'est
+// jamais réécrite : c'est un fait, le décalage est un calcul (AD-9).
+function depuisS1(compte, mois) {
+  return ajouterJours(ajouterMois(compte.derniereS1, mois), compte.decalageS1 ?? 0);
 }
 
 // ————————————————————————————————————————————————— armement (BR-C-01/02)
@@ -88,6 +110,7 @@ export function armer(compte, { at, auth = {}, canauxVerifies = 0, messagesScell
   compte.etat = ETATS.ARME;
   compte.armement = { at, canauxVerifies, messagesScelles };
   compte.derniereS1 = at;
+  compte.decalageS1 = 0;
   noterCompte(compte, at, 'COMPTE_ARME', { cadenceMois: compte.regles.cadenceMois, canauxVerifies, messagesScelles, accuseLectureAt: at });
 }
 
@@ -138,6 +161,7 @@ export function signalS1(compte, { type = 'CONNEXION', at }) {
     compte.etat = ETATS.ARME;
   }
   compte.derniereS1 = at;
+  compte.decalageS1 = 0;
   noterCompte(compte, at, 'SIGNE_DE_VIE_S1', { type });
   return { compteurReinitialise: true, presomptionAnnulee: annulePresomption };
 }
@@ -209,7 +233,7 @@ export function attesterDeces(compte, { contactId, piece = null, at }) {
     if (quorumAtteint(compte)) {
       compte.pause = null;
       compte.cycle = null;
-      compte.verifRenforcee = { debut: at, fin: ajouterJours(at, VERIF_RENFORCEE_JOURS), relancesEmises: 0, signal: false };
+      compte.verifRenforcee = { debut: at, fin: ajouterJours(at, VERIF_RENFORCEE_JOURS), relancesEmises: 0, signal: false, remises: [], bloque: false };
       compte.etat = ETATS.ENQUETE;
       noterCompte(compte, at, 'VERIFICATION_RENFORCEE_OUVERTE', { fin: compte.verifRenforcee.fin });
     } else if (compte.etat === ETATS.ARME) {
@@ -303,7 +327,7 @@ export function renouvelerPause(compte, { jusquau, at, auth = {} }) {
 
 export function decalerCompteurs(compte, { jours, at, motif = 'INCIDENT_SERVICE' }) {
   if (jours <= 0) throw new Error('décalage strictement positif');
-  if (compte.derniereS1 != null) compte.derniereS1 = ajouterJours(compte.derniereS1, jours);
+  if (compte.derniereS1 != null) compte.decalageS1 = (compte.decalageS1 ?? 0) + jours;
   if (compte.cycle) compte.cycle.debut = ajouterJours(compte.cycle.debut, jours);
   if (compte.veille) {
     compte.veille.ouverteLe = ajouterJours(compte.veille.ouverteLe, jours);
@@ -315,10 +339,67 @@ export function decalerCompteurs(compte, { jours, at, motif = 'INCIDENT_SERVICE'
   noterCompte(compte, at, 'COMPTEURS_DECALES', { jours, motif });
 }
 
+// Incident de service déclaré par l'exploitation (AD-9, BR-C-13). Au-delà de
+// sept jours, sa durée est neutralisée : toutes les échéances reculent
+// d'autant. En deçà, il est seulement constaté. Un même incident n'est
+// jamais compté deux fois.
+export function constaterIndisponibilite(compte, { id, debut, fin, cause = 'INCIDENT_SERVICE', at }) {
+  if (typeof id !== 'string' || !id) throw new Error('indisponibilité : identifiant requis');
+  if (!(Number.isFinite(debut) && Number.isFinite(fin) && fin > debut)) throw new Error('indisponibilité : période invalide');
+  compte.indisponibilites ??= [];
+  if (compte.indisponibilites.includes(id)) return { dejaPrise: true };
+  compte.indisponibilites.push(id);
+  const jours = (fin - debut) / 86_400_000;
+  const aDecaler = jours > INDISPONIBILITE_SEUIL_JOURS
+    && (ETATS_PROTOCOLE.includes(compte.etat) || compte.etat === ETATS.EN_PAUSE);
+  noterCompte(compte, at, 'INDISPONIBILITE_CONSTATEE', { id, debut, fin, cause, jours, compteursDecales: aDecaler });
+  if (aDecaler) decalerCompteurs(compte, { jours, at, motif: `INDISPONIBILITE ${id}` });
+  return { dejaPrise: false, compteursDecales: aDecaler };
+}
+
+// ————————————————————————————————————————————————— remises et sas (AD-12, AD-13)
+
+const RESULTATS_REMISE = ['REMIS', 'OUVERT', 'REBOND'];
+
+// Accusé du fournisseur d'envoi. Seule une remise (ou une ouverture) compte :
+// un envoi accepté ne prouve rien, un rebond encore moins.
+export function noterRemise(compte, { effet, resultat, at }) {
+  if (!effet || typeof effet.type !== 'string') throw new Error('accusé de remise : effet requis (AD-13)');
+  if (!RESULTATS_REMISE.includes(resultat)) throw new Error(`accusé de remise parmi : ${RESULTATS_REMISE.join(', ')}`);
+  noterCompte(compte, at, 'REMISE_RECUE', {
+    effet: effet.type, canal: effet.canal ?? null, contactId: effet.contactId ?? null, prevueLe: effet.prevueLe ?? null, resultat,
+  });
+  if (resultat === 'REBOND' || !effet.canal) return;
+  // Seules comptent les remises de la phase en cours : un accusé tardif d'un
+  // cycle ancien ne débloque rien.
+  const ajouter = (phase) => {
+    phase.remises ??= [];
+    if (!phase.remises.includes(effet.canal)) phase.remises.push(effet.canal);
+  };
+  if (effet.type === 'SOLLICITATION' && compte.cycle && effet.prevueLe >= compte.cycle.debut) ajouter(compte.cycle);
+  if (effet.type === 'RELANCE_RENFORCEE' && compte.verifRenforcee && effet.prevueLe >= compte.verifRenforcee.debut) {
+    ajouter(compte.verifRenforcee);
+  }
+}
+
+// Le sas a vérifié ses cinq verrous (AD-12) et, en période d'amorçage, un
+// opérateur a confirmé (AD-15) : seulement alors l'exécution démarre.
+export function confirmerExecution(compte, { par, at }) {
+  if (!compte.regles.sasExecution) throw new Error("ce compte n'a pas de sas d'exécution");
+  if (compte.etat !== ETATS.PRESUME_DECEDE || !compte.presomption?.executionDemandee) {
+    throw new Error("aucune demande d'exécution en attente (AD-12)");
+  }
+  if (typeof par !== 'string' || !par) throw new Error('confirmation nominative requise (AD-15)');
+  compte.etat = ETATS.EN_EXECUTION;
+  noterCompte(compte, at, 'EXECUTION_DEMARREE', {
+    grace: `${GRACE_JOURS} jours révolus`, prevueLe: compte.presomption.executionDemandee, confirmePar: par,
+  });
+}
+
 // ————————————————————————————————————————————————— moteur d'échéances
 
 function ouvrirSollicitation(compte, debut, at, motif) {
-  compte.cycle = { debut, decalage: 0, s2Utilise: false, relances: 0, enqueteOuverte: false };
+  compte.cycle = { debut, decalage: 0, s2Utilise: false, relances: 0, enqueteOuverte: false, remises: [], bloque: false };
   compte.veille = null;
   compte.etat = ETATS.SOLLICITATION;
   noterCompte(compte, at, 'SOLLICITATION_OUVERTE', { motif, prevueLe: debut });
@@ -354,12 +435,18 @@ function etape(compte, at) {
       return true;
     }
     if (at >= v.fin) {
-      compte.verifRenforcee = null;
-      if (quorumAtteint(compte) && !v.signal) {
-        ouvrirPresomption(compte, v.fin, at, 'ACCELEREE');
-      } else {
-        ouvrirSollicitation(compte, v.fin, at, 'SORTIE_VERIFICATION_RENFORCEE');
+      const versPresomption = quorumAtteint(compte) && !v.signal;
+      // AD-13 : on ne présume pas un décès sur des relances que personne n'a reçues.
+      if (versPresomption && compte.regles.preuveDeRemise && (v.remises ?? []).length < 2) {
+        if (v.bloque) return false;
+        v.bloque = true;
+        noterCompte(compte, at, 'REMISE_INSUFFISANTE', { phase: 'VERIFICATION_RENFORCEE', canauxRemis: [...(v.remises ?? [])], prevueLe: v.fin });
+        return true;
       }
+      const quand = v.bloque ? at : v.fin; // débloqué tard : la suite part d'aujourd'hui
+      compte.verifRenforcee = null;
+      if (versPresomption) ouvrirPresomption(compte, quand, at, 'ACCELEREE');
+      else ouvrirSollicitation(compte, quand, at, 'SORTIE_VERIFICATION_RENFORCEE');
       return true;
     }
     return false;
@@ -367,7 +454,7 @@ function etape(compte, at) {
 
   // Échéance de cadence → Phase 1
   if (compte.etat === ETATS.ARME && compte.derniereS1 != null) {
-    const echeance = ajouterMois(compte.derniereS1, compte.regles.cadenceMois);
+    const echeance = depuisS1(compte, compte.regles.cadenceMois);
     if (at >= echeance) {
       ouvrirSollicitation(compte, echeance, at, 'ECHEANCE_CADENCE');
       return true;
@@ -387,11 +474,25 @@ function etape(compte, at) {
     }
     const quandEnquete = ajouterJours(c.debut, ENQUETE_JOUR + c.decalage);
     if (!c.enqueteOuverte && at >= quandEnquete) {
+      // AD-13 : un silence n'en est un que si on a réussi à parler. Sans
+      // remise sur deux canaux distincts, le compte n'avance pas et alerte.
+      if (compte.regles.preuveDeRemise && (c.remises ?? []).length < 2) {
+        if (c.bloque) return false;
+        c.bloque = true;
+        noterCompte(compte, at, 'REMISE_INSUFFISANTE', { phase: 'SOLLICITATION', canauxRemis: [...(c.remises ?? [])], prevueLe: quandEnquete });
+        return true;
+      }
+      // Débloqué tard : l'enquête s'ouvre maintenant et les contacts gardent
+      // leurs trente jours avant la décision.
+      if (c.bloque) {
+        c.decalage += (at - quandEnquete) / 86_400_000;
+        c.bloque = false;
+      }
       c.enqueteOuverte = true;
       compte.etat = ETATS.ENQUETE;
       noterCompte(compte, at, 'CONTACTS_SOLLICITES', {
         contacts: contactsAcceptants(compte).map((x) => x.id),
-        prevueLe: quandEnquete,
+        prevueLe: ajouterJours(c.debut, ENQUETE_JOUR + c.decalage),
       });
       return true;
     }
@@ -409,7 +510,7 @@ function etape(compte, at) {
         };
         noterCompte(compte, at, 'VEILLE_LONGUE_OUVERTE', {
           prochaineEnquete: compte.veille.prochaineEnquete,
-          plancherInactivite: ajouterMois(compte.derniereS1, PLANCHER_INACTIVITE_MOIS),
+          plancherInactivite: depuisS1(compte, PLANCHER_INACTIVITE_MOIS),
         });
       }
       return true;
@@ -420,7 +521,7 @@ function etape(compte, at) {
   // Veille longue : ré-enquêtes semestrielles, plancher de 18 mois (BR-C-05)
   if (compte.veille) {
     const v = compte.veille;
-    const plancher = ajouterMois(compte.derniereS1, PLANCHER_INACTIVITE_MOIS);
+    const plancher = depuisS1(compte, PLANCHER_INACTIVITE_MOIS);
     if (at >= plancher) {
       // Jamais avant 18 mois sans S1 ; la grâce court depuis le plus tardif
       // du plancher et de l'ouverture de la veille.
@@ -460,7 +561,14 @@ function etape(compte, at) {
       noterCompte(compte, at, 'RELANCE_GRACE', { numero: p.notifsEmises, prevueLe: prochaineNotif, canaux: CANAUX });
       return true;
     }
-    if (at >= p.graceFinAt) {
+    if (at >= p.graceFinAt && !p.executionDemandee) {
+      if (compte.regles.sasExecution) {
+        // AD-12 : une demande, pas un démarrage. Le compte reste présumé
+        // décédé — un signe de vie l'annule encore — jusqu'au sas.
+        p.executionDemandee = p.graceFinAt;
+        noterCompte(compte, at, 'EXECUTION_DEMANDEE', { grace: `${GRACE_JOURS} jours révolus`, prevueLe: p.graceFinAt });
+        return true;
+      }
       compte.etat = ETATS.EN_EXECUTION;
       noterCompte(compte, at, 'EXECUTION_DEMARREE', { grace: `${GRACE_JOURS} jours révolus`, prevueLe: p.graceFinAt });
       return true;
@@ -487,6 +595,7 @@ export function prochaineEcheance(compte) {
 
   if (compte.verifRenforcee) {
     const v = compte.verifRenforcee;
+    if (v.bloque) return null; // attend des accusés de remise, pas une date
     const dates = [v.fin];
     const relance = ajouterJours(v.debut, (v.relancesEmises + 1) * VERIF_RENFORCEE_PAS_JOURS);
     if (v.relancesEmises < 5 && relance < v.fin) dates.push(relance);
@@ -494,7 +603,7 @@ export function prochaineEcheance(compte) {
   }
 
   if (compte.etat === ETATS.ARME && compte.derniereS1 != null) {
-    return ajouterMois(compte.derniereS1, compte.regles.cadenceMois);
+    return depuisS1(compte, compte.regles.cadenceMois);
   }
 
   if (compte.cycle) {
@@ -503,18 +612,21 @@ export function prochaineEcheance(compte) {
     if (c.relances < OFFSETS_SOLLICITATIONS.length) {
       dates.push(ajouterJours(c.debut, OFFSETS_SOLLICITATIONS[c.relances] + c.decalage));
     }
-    dates.push(ajouterJours(c.debut, (c.enqueteOuverte ? DECISION_JOUR : ENQUETE_JOUR) + c.decalage));
-    return Math.min(...dates);
+    if (!(c.bloque && !c.enqueteOuverte)) {
+      dates.push(ajouterJours(c.debut, (c.enqueteOuverte ? DECISION_JOUR : ENQUETE_JOUR) + c.decalage));
+    }
+    return dates.length ? Math.min(...dates) : null;
   }
 
   if (compte.veille) {
     const v = compte.veille;
-    const plancher = ajouterMois(compte.derniereS1, PLANCHER_INACTIVITE_MOIS);
+    const plancher = depuisS1(compte, PLANCHER_INACTIVITE_MOIS);
     return Math.min(plancher, v.enquete ? v.enquete.decisionAt : v.prochaineEnquete);
   }
 
   if (compte.etat === ETATS.PRESUME_DECEDE) {
     const p = compte.presomption;
+    if (p.executionDemandee) return null; // attend le sas, pas une date
     const notif = ajouterJours(p.at, (p.notifsEmises + 1) * 7);
     return notif < p.graceFinAt ? notif : p.graceFinAt;
   }
@@ -524,11 +636,25 @@ export function prochaineEcheance(compte) {
 }
 
 // Évalue toutes les transitions dues à l'instant `at` (cascade en un appel).
-export function tick(compte, at) {
+// Rend aussi les changements d'état, chacun avec l'instant où il était dû :
+// `evaluer` s'en sert pour refuser un rattrapage qui sauterait des étapes (AD-9).
+export function avancerProtocole(compte, at) {
   const avant = compte.journal.length;
-  let garde = 0;
-  while (etape(compte, at) && garde++ < 500) { /* cascade */ }
-  return compte.journal.slice(avant);
+  const transitions = [];
+  let dernierDu = -Infinity;
+  for (let garde = 0; garde < 500; garde++) {
+    // Une étape ne peut pas avoir été due avant celle qui l'a rendue possible.
+    const du = Math.max(prochaineEcheance(compte) ?? at, dernierDu);
+    const de = compte.etat;
+    if (!etape(compte, at)) break;
+    dernierDu = du;
+    if (compte.etat !== de) transitions.push({ de, vers: compte.etat, du });
+  }
+  return { evenements: compte.journal.slice(avant), transitions };
+}
+
+export function tick(compte, at) {
+  return avancerProtocole(compte, at).evenements;
 }
 
 // Fin de la vague immédiate (module D) → liquidation (module E).
@@ -573,12 +699,12 @@ export function previsionExecution(compte) {
     if (v) decision = ajouterJours(v.fin, DECISION_JOUR); // sortie vers une sollicitation
     else if (compte.cycle) decision = ajouterJours(compte.cycle.debut, DECISION_JOUR + compte.cycle.decalage);
     else if (compte.pause) decision = ajouterJours(compte.pause.jusquau, DECISION_JOUR);
-    else decision = ajouterJours(ajouterMois(compte.derniereS1, compte.regles.cadenceMois), DECISION_JOUR);
+    else decision = ajouterJours(depuisS1(compte, compte.regles.cadenceMois), DECISION_JOUR);
     ouvertureVeille = decision;
   }
   // Sans quorum, présomption au plancher de 18 mois sans S1, jamais avant
   // l'ouverture de la veille (BR-C-05).
-  const parPlancher = Math.max(ouvertureVeille, ajouterMois(compte.derniereS1, PLANCHER_INACTIVITE_MOIS));
+  const parPlancher = Math.max(ouvertureVeille, depuisS1(compte, PLANCHER_INACTIVITE_MOIS));
   const presomption = (avecQuorum) => (avecQuorum ? Math.min(decision, parPlancher) : parPlancher);
   return {
     executionSiRienNeChange: ajouterJours(presomption(quorumAtteint(compte)), GRACE_JOURS),
@@ -590,8 +716,8 @@ export function previsionExecution(compte) {
 export function prochainesEcheances(compte) {
   const e = {};
   if (compte.derniereS1 != null && ETATS_PROTOCOLE.includes(compte.etat)) {
-    e.echeanceCadence = ajouterMois(compte.derniereS1, compte.regles.cadenceMois);
-    e.plancherInactivite = ajouterMois(compte.derniereS1, PLANCHER_INACTIVITE_MOIS);
+    e.echeanceCadence = depuisS1(compte, compte.regles.cadenceMois);
+    e.plancherInactivite = depuisS1(compte, PLANCHER_INACTIVITE_MOIS);
   }
   if (compte.cycle) {
     e.enquete = ajouterJours(compte.cycle.debut, ENQUETE_JOUR + compte.cycle.decalage);
