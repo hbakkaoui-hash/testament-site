@@ -1,42 +1,42 @@
 // Application Testament — coquille locale au-dessus du noyau de domaine.
-// Aucune règle métier ici : tout passe par src/core/. La persistance est un
+// Aucune règle métier ici : tout passe par paquets/protocole/. La persistance est un
 // localStorage (M2 : à remplacer par une vraie API), et le temps est celui du
 // « banc d'essai » pour pouvoir observer un protocole qui se joue sur des mois.
 
 import {
   creerCompte, armer, signalS1, signalS2, attesterDeces, demarrerPause,
-  changerCadence, tick, terminerExecution, prochainesEcheances, CADENCES_MOIS, ETATS,
-} from './src/core/compte.js';
+  changerCadence, tick, terminerExecution, prochainesEcheances, previsionExecution, CADENCES_MOIS, ETATS,
+} from './paquets/protocole/src/compte.js';
 import {
   inviterContact, accepterInvitation, renoncerContact, refuserInvitation, contactsAcceptants,
-} from './src/core/contacts.js';
+} from './paquets/protocole/src/contacts.js';
 import {
   creerMessage, definirTexte, definirNote, marquerFortImpact, ajouterDestinataire,
   definirSecours, programmerDateFixe, revenirImmediate, sceller, ajouterGroupe, groupesDe,
   demanderPublication, confirmerPublication, revoquerPublication, programmerPublication,
   ETATS_MESSAGE,
-} from './src/core/message.js';
+} from './paquets/protocole/src/message.js';
 import {
   tickPublications, fileModeration, publicationsEnLigne, deciderModeration,
   signalerDetresse, demanderRetrait, retirerPublication, vuePublique, dateDuePublication,
-} from './src/core/publication.js';
+} from './paquets/protocole/src/publication.js';
 import {
   demarrerExecution, tickExecution, ouvrirSas, envoyerCode, verifierCode,
   lire, differer, refuser, telecharger, signalerRebond, ETATS_PLI,
-} from './src/core/execution.js';
+} from './paquets/protocole/src/execution.js';
 import {
   designerExecuteur, retirerExecuteur, reporterExecution, fenetreDeReport,
   demanderSuspension, confirmerSuspension, fournirCoordonnees, apercuPourExecuteur, POUVOIRS,
-} from './src/core/executeur.js';
+} from './paquets/protocole/src/executeur.js';
 import {
   deposerReflexion, modererReflexion, reflexionsPubliques, fileModerationReflexions,
   definirReflexions, signalerContenu, fileSignalements, traiterSignalement,
-} from './src/core/reflexions.js';
+} from './paquets/protocole/src/reflexions.js';
 import {
   tickDonnees, definirDirectivePublique, demanderSuppressionCompte,
   annulerSuppressionCompte, exporter, etatConservation, DIRECTIVES_PUBLIQUES,
-} from './src/core/donnees.js';
-import { ajouterJours, ajouterMois } from './src/core/horloge.js';
+} from './paquets/protocole/src/donnees.js';
+import { ajouterJours, ajouterMois } from './paquets/protocole/src/horloge.js';
 
 const CLE = 'testament.v1';
 let etat;
@@ -220,23 +220,6 @@ function rendre() {
   window.scrollTo({ top: 0 });
 }
 
-// ————————————————————————————————— projection : date théorique d'exécution
-// BR-C-11 : « date théorique d'exécution si rien ne change ». Projection
-// d'affichage — la vérité reste la machine à états.
-
-function dateTheoriqueExecution() {
-  const c = etat.compte;
-  if (c.presomption) return c.presomption.graceFinAt;
-  if (![ETATS.ARME, ETATS.SOLLICITATION, ETATS.ENQUETE, ETATS.VEILLE_LONGUE, ETATS.EN_PAUSE].includes(c.etat)) return null;
-  const base = c.derniereS1 || c.creeLe;
-  const decision = ajouterJours(ajouterMois(base, c.regles.cadenceMois), 86);
-  // Sans deux contacts acceptants, aucun quorum possible : le plancher de
-  // 18 mois sans signal S1 domine (BR-C-05).
-  const plancher = ajouterMois(base, 18);
-  const depart = contactsAcceptants(c).length >= 2 ? decision : Math.max(decision, plancher);
-  return ajouterJours(depart, 90); // grâce non réductible (BR-C-06)
-}
-
 // ————————————————————————————————— vue : tableau de bord (BR-C-11)
 
 function vueTableau() {
@@ -247,7 +230,9 @@ function vueTableau() {
   // Un message purgé par le cycle de vie n'a plus de version : on ne l'affiche pas.
   const scelles = etat.messages.filter((m) => m.versions.length > 0);
   const prochaine = e.echeanceCadence;
-  const execution = dateTheoriqueExecution();
+  // BR-C-11, AD-3 : deux dates calculées par le paquet, jamais ici.
+  const { executionSiRienNeChange, executionAuPlusTot } = previsionExecution(c);
+  const nbAcceptants = contactsAcceptants(c).length;
   const urgent = [ETATS.SOLLICITATION, ETATS.ENQUETE, ETATS.PRESUME_DECEDE].includes(c.etat);
 
   const alerte = urgent ? `
@@ -285,13 +270,15 @@ function vueTableau() {
       <span class="p">${dans(c.derniereS1)}</span></div>
     <div><span class="l">Prochaine sollicitation</span><span class="v">${fmt(prochaine)}</span>
       <span class="p">cadence : tous les ${c.regles.cadenceMois} mois</span></div>
-    <div><span class="l">Exécution si rien ne change</span><span class="v ${urgent ? 'crit' : ''}">${fmt(execution)}</span>
-      <span class="p">${dans(execution)}</span></div>
-    <div><span class="l">Contacts acceptants</span><span class="v ${contactsAcceptants(c).length >= 2 ? 'ok' : 'crit'}">${contactsAcceptants(c).length}</span>
-      <span class="p">${contactsAcceptants(c).length >= 2 ? 'quorum possible' : 'quorum impossible : délai porté à 21 mois'}</span></div>
+    <div><span class="l">Si personne ne fait rien</span><span class="v ${urgent ? 'crit' : ''}">${fmt(executionSiRienNeChange)}</span>
+      <span class="p">${dans(executionSiRienNeChange)}</span></div>
+    <div><span class="l">Au plus tôt, si vos contacts attestent</span><span class="v">${executionAuPlusTot ? fmt(executionAuPlusTot) : '—'}</span>
+      <span class="p">${executionAuPlusTot ? dans(executionAuPlusTot) : 'aucun contact acceptant : pas de chemin plus court'}</span></div>
+    <div><span class="l">Contacts acceptants</span><span class="v ${nbAcceptants >= 2 ? 'ok' : 'crit'}">${nbAcceptants}</span>
+      <span class="p">${nbAcceptants >= 2 ? 'quorum possible' : nbAcceptants === 1 ? 'quorum possible seulement avec une pièce justificative' : 'quorum impossible : délai porté à 21 mois'}</span></div>
   </div>
 
-  ${contactsAcceptants(c).length < 2 ? `<div class="alerte">
+  ${nbAcceptants < 2 ? `<div class="alerte">
     <b>Avec deux contacts de confiance, vos messages partiraient environ 9 mois après votre décès ; sans, il faut attendre 21 mois.</b>
     <p>Un contact n’a jamais accès à vos messages (BR-A-12) et ne peut rien déclencher seul (BR-A-14).</p>
     <div class="actions"><a class="bouton" href="#/contacts">Désigner un contact</a></div>

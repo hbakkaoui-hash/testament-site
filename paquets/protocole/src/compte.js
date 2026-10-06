@@ -256,6 +256,12 @@ export function repondreEnquete(compte, { contactId, reponse, piece = null, at }
   noterCompte(compte, at, 'REPONSE_ENQUETE', { contactId, reponse, effet: `SUSPENSION_${VIVANT_SUSPENSION_JOURS}_JOURS` });
 }
 
+// Le quorum peut-il encore être atteint ? Deux acceptants, ou un seul qui
+// joindra une pièce justificative (BR-A-14, BR-C-08).
+export function quorumPossible(compte) {
+  return contactsAcceptants(compte).length >= 1;
+}
+
 // Quorum (BR-A-14, BR-C-08) : 2 attestations d'acceptants distincts, ou une
 // seule avec pièce lorsqu'un seul contact est acceptant.
 export function quorumAtteint(compte) {
@@ -456,7 +462,7 @@ function etape(compte, at) {
     }
     if (at >= p.graceFinAt) {
       compte.etat = ETATS.EN_EXECUTION;
-      noterCompte(compte, at, 'EXECUTION_DEMARREE', { grace: `${GRACE_JOURS} jours révolus` });
+      noterCompte(compte, at, 'EXECUTION_DEMARREE', { grace: `${GRACE_JOURS} jours révolus`, prevueLe: p.graceFinAt });
       return true;
     }
     return false;
@@ -470,6 +476,51 @@ function etape(compte, at) {
   }
 
   return false;
+}
+
+// Prochain instant où `etape` aura quelque chose à faire (AD-2). Miroir exact
+// des conditions de `etape` : chaque branche y teste « at >= X », la prochaine
+// échéance est donc le plus petit X actif. Un test vérifie, scénario après
+// scénario, qu'aucune transition n'est due une milliseconde plus tôt.
+export function prochaineEcheance(compte) {
+  if (compte.etat === ETATS.EN_PAUSE && compte.pause) return compte.pause.jusquau;
+
+  if (compte.verifRenforcee) {
+    const v = compte.verifRenforcee;
+    const dates = [v.fin];
+    const relance = ajouterJours(v.debut, (v.relancesEmises + 1) * VERIF_RENFORCEE_PAS_JOURS);
+    if (v.relancesEmises < 5 && relance < v.fin) dates.push(relance);
+    return Math.min(...dates);
+  }
+
+  if (compte.etat === ETATS.ARME && compte.derniereS1 != null) {
+    return ajouterMois(compte.derniereS1, compte.regles.cadenceMois);
+  }
+
+  if (compte.cycle) {
+    const c = compte.cycle;
+    const dates = [];
+    if (c.relances < OFFSETS_SOLLICITATIONS.length) {
+      dates.push(ajouterJours(c.debut, OFFSETS_SOLLICITATIONS[c.relances] + c.decalage));
+    }
+    dates.push(ajouterJours(c.debut, (c.enqueteOuverte ? DECISION_JOUR : ENQUETE_JOUR) + c.decalage));
+    return Math.min(...dates);
+  }
+
+  if (compte.veille) {
+    const v = compte.veille;
+    const plancher = ajouterMois(compte.derniereS1, PLANCHER_INACTIVITE_MOIS);
+    return Math.min(plancher, v.enquete ? v.enquete.decisionAt : v.prochaineEnquete);
+  }
+
+  if (compte.etat === ETATS.PRESUME_DECEDE) {
+    const p = compte.presomption;
+    const notif = ajouterJours(p.at, (p.notifsEmises + 1) * 7);
+    return notif < p.graceFinAt ? notif : p.graceFinAt;
+  }
+
+  if (compte.etat === ETATS.EN_LIQUIDATION) return compte.liquidation.finAt;
+  return null;
 }
 
 // Évalue toutes les transitions dues à l'instant `at` (cascade en un appel).
@@ -487,6 +538,52 @@ export function terminerExecution(compte, { at }) {
   compte.liquidation = { finAt: ajouterJours(at, LIQUIDATION_JOURS) };
   noterCompte(compte, at, 'EXECUTION_TERMINEE', {});
   noterCompte(compte, at, 'LIQUIDATION_OUVERTE', { finAt: compte.liquidation.finAt });
+}
+
+// Prévision d'exécution (BR-C-11, AD-3). Deux dates, jamais une seule :
+// confondre « quorum possible » et « quorum atteint » annonçait une date
+// d'exécution que personne n'avait rendue réelle.
+// - executionSiRienNeChange : aucun signe de vie, aucune attestation de plus.
+// - executionAuPlusTot : les contacts attestent à la prochaine décision ;
+//   null si le quorum ne peut plus être atteint.
+export function previsionExecution(compte) {
+  if (compte.presomption) {
+    const g = compte.presomption.graceFinAt; // la grâce est non réductible (BR-C-06)
+    return { executionSiRienNeChange: g, executionAuPlusTot: g };
+  }
+  const rien = { executionSiRienNeChange: null, executionAuPlusTot: null };
+  if (compte.derniereS1 == null) return rien;
+  if (!ETATS_PROTOCOLE.includes(compte.etat) && compte.etat !== ETATS.EN_PAUSE) return rien;
+
+  const v = compte.verifRenforcee;
+  if (v && !v.signal && quorumAtteint(compte)) {
+    const x = ajouterJours(v.fin, GRACE_JOURS);
+    return { executionSiRienNeChange: x, executionAuPlusTot: x };
+  }
+
+  // Prochain point de décision où un quorum ferait basculer le compte, et
+  // instant d'ouverture de la veille longue qui suivrait faute de quorum.
+  let decision;
+  let ouvertureVeille;
+  if (compte.veille) {
+    const ve = compte.veille;
+    decision = ve.enquete ? ve.enquete.decisionAt : ajouterJours(ve.prochaineEnquete, VEILLE_ENQUETE_JOURS);
+    ouvertureVeille = ve.ouverteLe;
+  } else {
+    if (v) decision = ajouterJours(v.fin, DECISION_JOUR); // sortie vers une sollicitation
+    else if (compte.cycle) decision = ajouterJours(compte.cycle.debut, DECISION_JOUR + compte.cycle.decalage);
+    else if (compte.pause) decision = ajouterJours(compte.pause.jusquau, DECISION_JOUR);
+    else decision = ajouterJours(ajouterMois(compte.derniereS1, compte.regles.cadenceMois), DECISION_JOUR);
+    ouvertureVeille = decision;
+  }
+  // Sans quorum, présomption au plancher de 18 mois sans S1, jamais avant
+  // l'ouverture de la veille (BR-C-05).
+  const parPlancher = Math.max(ouvertureVeille, ajouterMois(compte.derniereS1, PLANCHER_INACTIVITE_MOIS));
+  const presomption = (avecQuorum) => (avecQuorum ? Math.min(decision, parPlancher) : parPlancher);
+  return {
+    executionSiRienNeChange: ajouterJours(presomption(quorumAtteint(compte)), GRACE_JOURS),
+    executionAuPlusTot: quorumPossible(compte) ? ajouterJours(presomption(true), GRACE_JOURS) : null,
+  };
 }
 
 // Tableau de bord de statut (BR-C-11).
