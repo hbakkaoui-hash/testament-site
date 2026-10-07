@@ -1,58 +1,94 @@
 <!doctype html>
-<html lang="fr">
+<html lang="fr" dir="ltr">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Testament</title>
+<title>Testament — messages délivrés après une disparition</title>
+<meta name="description" content="Testament : écrire de son vivant des messages délivrés après un décès présumé par un protocole de preuve de vie — jamais par un simple compteur d’inactivité. Démonstration en français, anglais et arabe.">
+<meta name="theme-color" content="#7E3140">
+<link rel="canonical" href="https://hbakkaoui-hash.github.io/testament-site/">
+<link rel="alternate" hreflang="fr" href="https://hbakkaoui-hash.github.io/testament-site/?lang=fr">
+<link rel="alternate" hreflang="en" href="https://hbakkaoui-hash.github.io/testament-site/?lang=en">
+<link rel="alternate" hreflang="ar" href="https://hbakkaoui-hash.github.io/testament-site/?lang=ar">
+<link rel="alternate" hreflang="x-default" href="https://hbakkaoui-hash.github.io/testament-site/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Testament">
+<meta property="og:title" content="Testament — messages délivrés après une disparition">
+<meta property="og:description" content="Des mots écrits de son vivant, délivrés après une disparition constatée par un protocole de preuve de vie. Prototype de démonstration.">
+<meta property="og:url" content="https://hbakkaoui-hash.github.io/testament-site/">
+<meta property="og:locale" content="fr_FR">
+<meta property="og:locale:alternate" content="en_GB">
+<meta property="og:locale:alternate" content="ar_AR">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='4' fill='%237E3140'/%3E%3Cpath d='M9 11h14M16 11v13' stroke='%23FAF8F4' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Marcellus&family=Instrument+Sans:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap">
 <link rel="stylesheet" href="./styles.css">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebApplication","name":"Testament","url":"https://hbakkaoui-hash.github.io/testament-site/","applicationCategory":"LifestyleApplication","inLanguage":["fr","en","ar"],"description":"Prototype de démonstration : messages délivrés après un décès présumé par un protocole de preuve de vie.","isAccessibleForFree":true}
+</script>
 </head>
 <body>
 
+<a class="evitement" href="#vue" data-action="aller-contenu" data-i18n="commun.allerAuContenu">Aller au contenu</a>
+
 <header class="barre">
-  <a class="marque" href="#/">Testament</a>
-  <nav id="nav"></nav>
-  <span class="etat-compte"><span class="chip" id="chip-etat">—</span></span>
+  <a class="marque" href="#/accueil">Testament</a>
+  <button class="menu-bouton" id="menu-bouton" aria-expanded="false" aria-controls="nav" data-i18n="nav.menu">Menu</button>
+  <nav id="nav" data-i18n-attr="aria-label:nav.principale" aria-label="Navigation principale"></nav>
+  <div class="barre-droite">
+    <span class="chip" id="chip-etat">—</span>
+    <div class="langues" role="group" data-i18n-attr="aria-label:nav.langue" aria-label="Langue">
+      <button data-langue="fr" lang="fr" aria-pressed="false">FR</button>
+      <button data-langue="en" lang="en" aria-pressed="false">EN</button>
+      <button data-langue="ar" lang="ar" aria-pressed="false">عربي</button>
+    </div>
+  </div>
 </header>
 
-<main id="vue"></main>
+<main id="vue" tabindex="-1">
+  <noscript><p>Testament : cette démonstration fonctionne dans le navigateur et demande JavaScript.
+  Testament: this demonstration runs in the browser and requires JavaScript.
+  هذا العرض التوضيحي يعمل داخل المتصفح ويتطلب تفعيل JavaScript.</p></noscript>
+</main>
 
 <footer class="pied">
-  <p><b>Prototype de démonstration.</b> Vos données restent dans ce navigateur :
+  <p data-i18n-html="pied.avertissement"><b>Prototype de démonstration.</b> Vos données restent dans ce navigateur :
   rien n’est transmis, aucun message n’est réellement délivré, aucun contact n’est
   contacté. Ceci n’est pas un testament au sens juridique — aucune disposition
   patrimoniale, aucune valeur successorale.</p>
 </footer>
 
-<div class="banc" id="banc">
+<section class="banc" id="banc" data-i18n-attr="aria-label:banc.titre" aria-label="Banc d'essai">
   <div class="banc-tete">
-    <b>Banc d'essai</b>
+    <b data-i18n="banc.titre">Banc d'essai</b>
     <span id="banc-date">—</span>
-    <button class="lien" id="banc-repli">réduire</button>
+    <button class="lien" id="banc-repli" aria-controls="banc-corps" aria-expanded="true" data-i18n="banc.reduire">réduire</button>
   </div>
   <div class="banc-corps" id="banc-corps">
-    <div class="banc-groupe">
-      <span class="banc-lib">Temps</span>
-      <button data-temps="1">+1 j</button>
-      <button data-temps="7">+7 j</button>
-      <button data-temps="30">+1 mois</button>
-      <button data-temps="90">+3 mois</button>
-      <button data-temps="365">+1 an</button>
+    <div class="banc-groupe" role="group" data-i18n-attr="aria-label:banc.temps">
+      <span class="banc-lib" data-i18n="banc.temps">Temps</span>
+      <button data-temps="1" data-i18n="banc.plus1j">+1 j</button>
+      <button data-temps="7" data-i18n="banc.plus7j">+7 j</button>
+      <button data-temps="30" data-i18n="banc.plus1m">+1 mois</button>
+      <button data-temps="90" data-i18n="banc.plus3m">+3 mois</button>
+      <button data-temps="365" data-i18n="banc.plus1a">+1 an</button>
     </div>
-    <div class="banc-groupe">
-      <span class="banc-lib">Signaux</span>
-      <button data-banc="s2">Email ouvert (S2)</button>
-      <button data-banc="attester">Un contact atteste</button>
+    <div class="banc-groupe" role="group" data-i18n-attr="aria-label:banc.signaux">
+      <span class="banc-lib" data-i18n="banc.signaux">Signaux</span>
+      <button data-banc="s2" data-i18n="banc.s2">Email ouvert (S2)</button>
+      <button data-banc="attester" data-i18n="banc.attester">Un contact atteste</button>
     </div>
-    <div class="banc-groupe">
-      <span class="banc-lib">Données</span>
-      <button data-banc="exemple">Jeu d'exemple</button>
-      <button data-banc="raz">Tout effacer</button>
+    <div class="banc-groupe" role="group" data-i18n-attr="aria-label:banc.donnees">
+      <span class="banc-lib" data-i18n="banc.donnees">Données</span>
+      <button data-banc="exemple" data-i18n="banc.exemple">Jeu d'exemple</button>
+      <button data-banc="raz" data-i18n="banc.raz">Tout effacer</button>
     </div>
   </div>
-</div>
+</section>
 
-<div class="notif" id="notif" hidden></div>
+<div class="notif" id="notif" role="status" aria-live="polite" hidden></div>
 
 <script type="module" src="./app.js"></script>
 </body>

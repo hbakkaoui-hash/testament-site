@@ -28,9 +28,9 @@ body {
 .barre nav a.actif { color:var(--ink); border-color:var(--line-strong); background:var(--paper); }
 .barre nav a .pastille {
   font-family:"Spline Sans Mono",monospace; font-size:.7rem; color:var(--accent);
-  background:var(--crit-doux); border-radius:8px; padding:0 .35rem; margin-left:.35rem;
+  background:var(--crit-doux); border-radius:8px; padding:0 .35rem; margin-inline-start:.35rem;
 }
-.etat-compte { margin-left:auto; }
+.barre-droite { margin-inline-start:auto; display:flex; align-items:center; gap:.8rem; }
 
 /* ————— contenu ————— */
 main { max-width:58rem; margin:0 auto; padding:1.6rem 1.5rem 2rem; }
@@ -88,7 +88,8 @@ textarea { min-height:9rem; resize:vertical; line-height:1.6; }
 input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible, a:focus-visible {
   outline:2px solid var(--accent); outline-offset:2px;
 }
-.case { display:flex; gap:.6rem; align-items:flex-start; margin-bottom:.9rem; }
+.case { display:flex; gap:.6rem; align-items:flex-start; margin-bottom:.9rem; cursor:pointer; }
+.duo .bas { display:flex; align-items:flex-end; margin-bottom:.9rem; }
 .case input { margin-top:.3rem; }
 .case span { font-size:.9rem; }
 .duo { display:grid; grid-template-columns:1fr 1fr; gap:0 1rem; }
@@ -102,9 +103,9 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .statut .v.crit { color:var(--crit); } .statut .v.ok { color:var(--ok); }
 .statut .p { font-size:.8rem; color:var(--muted); }
 
-.alerte { border-left:3px solid var(--accent); background:var(--surface); border:1px solid var(--line-strong);
-  border-left:3px solid var(--accent); border-radius:3px; padding:.9rem 1.1rem; margin-bottom:1rem; }
-.alerte.rouge { border-left-color:var(--crit); background:var(--crit-doux); }
+.alerte { background:var(--surface); border:1px solid var(--line-strong);
+  border-inline-start:3px solid var(--accent); border-radius:3px; padding:.9rem 1.1rem; margin-bottom:1rem; }
+.alerte.rouge { border-inline-start-color:var(--crit); background:var(--crit-doux); }
 .alerte b { display:block; margin-bottom:.25rem; }
 .alerte p { margin:0; }
 
@@ -163,10 +164,10 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .banc-tete { display:flex; align-items:baseline; gap:.9rem; margin-bottom:.5rem; }
 .banc-tete b { font-family:"Spline Sans Mono",monospace; font-size:.68rem; letter-spacing:.16em; text-transform:uppercase; color:#C9A227; }
 .banc-tete #banc-date { font-family:"Spline Sans Mono",monospace; font-size:.82rem; }
-.banc-tete .lien { color:var(--line-strong); margin-left:auto; }
+.banc-tete .lien { color:var(--line-strong); margin-inline-start:auto; }
 .banc-corps { display:flex; gap:1.4rem; flex-wrap:wrap; }
 .banc-groupe { display:flex; align-items:center; gap:.35rem; flex-wrap:wrap; }
-.banc-lib { font-family:"Spline Sans Mono",monospace; font-size:.66rem; letter-spacing:.12em; text-transform:uppercase; color:#9BA0A9; margin-right:.2rem; }
+.banc-lib { font-family:"Spline Sans Mono",monospace; font-size:.66rem; letter-spacing:.12em; text-transform:uppercase; color:#9BA0A9; margin-inline-end:.2rem; }
 .banc button { background:transparent; color:var(--paper); border-color:#4A4F58; font-size:.82rem; padding:.25rem .6rem; }
 .banc button:hover { border-color:#C9A227; color:#C9A227; }
 .banc.replie .banc-corps { display:none; }
@@ -174,11 +175,11 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 /* ————— notification éphémère ————— */
 .notif {
   position:fixed; left:50%; transform:translateX(-50%); bottom:9.5rem; z-index:30;
-  background:var(--surface); border:1px solid var(--line-strong); border-left:3px solid var(--ok);
+  background:var(--surface); border:1px solid var(--line-strong); border-inline-start:3px solid var(--ok);
   border-radius:3px; padding:.7rem 1.1rem; max-width:34rem; box-shadow:0 2px 12px rgba(0,0,0,.1);
   font-size:.9rem;
 }
-.notif.erreur { border-left-color:var(--crit); color:var(--crit); }
+.notif.erreur { border-inline-start-color:var(--crit); color:var(--crit); }
 
 /* lien vers le simulateur : voisin de l'application, pas une rubrique */
 .barre nav a.externe { color: var(--laiton); border-color: transparent; }
@@ -195,7 +196,79 @@ footer.pied b { color: var(--ink); }
 .reflexions { border-top: 1px solid var(--line); margin-top: .9rem; }
 blockquote.reflexion {
   margin: 0 0 .5rem; padding: .6rem .9rem; background: var(--paper);
-  border-left: 2px solid var(--line-strong); border-radius: 2px;
+  border-inline-start: 2px solid var(--line-strong); border-radius: 2px;
 }
 blockquote.reflexion p { margin: 0; }
 blockquote.reflexion footer { margin-top: .3rem; color: var(--muted); font-size: .8rem; }
+
+/* ————— sélecteur de langue, menu replié, lien d'évitement ————— */
+.langues { display:flex; gap:.15rem; }
+.langues button { font-size:.78rem; padding:.2rem .5rem; line-height:1.3; }
+.langues button[aria-pressed="true"] { background:var(--ink); color:var(--paper); border-color:var(--ink); }
+.langues button[lang="ar"] { font-family:"Tajawal","Noto Sans Arabic",system-ui,sans-serif; }
+.menu-bouton { display:none; }
+@media (max-width:760px) {
+  .barre { gap:.6rem; padding:.7rem 1rem; }
+  .menu-bouton { display:inline-block; }
+  .barre nav { display:none; order:10; width:100%; flex-direction:column; gap:.1rem; }
+  .barre.menu-ouvert nav { display:flex; }
+  .barre nav a { padding:.55rem .7rem; font-size:.95rem; }
+  .barre-droite { gap:.5rem; }
+  .barre-droite .chip { display:none; }
+}
+.evitement { position:absolute; inset-inline-start:.5rem; top:-3rem; z-index:50; background:var(--ink); color:var(--paper);
+  padding:.5rem .9rem; border-radius:3px; text-decoration:none; }
+.evitement:focus { top:.5rem; }
+main:focus { outline:none; }
+
+/* ————— accueil : introduction, menu, guide, lexique ————— */
+.intro { margin-bottom:1.6rem; }
+.surtitre { font-family:"Spline Sans Mono",monospace; font-size:.7rem; letter-spacing:.18em; text-transform:uppercase; color:var(--laiton); margin:0 0 .6rem; }
+.intro h1 { font-size:clamp(2rem,5.5vw,2.9rem); margin-bottom:.6rem; }
+.accroche { font-size:1.15rem; color:var(--ink); max-width:46ch; }
+main section { margin-bottom:2.2rem; }
+main section > h2 { font-size:1.45rem; }
+.rubriques { display:grid; gap:.7rem; grid-template-columns:repeat(auto-fit,minmax(15rem,1fr)); }
+a.rubrique { display:block; text-decoration:none; color:inherit; background:var(--surface);
+  border:1px solid var(--line-strong); border-radius:3px; padding:1rem 1.1rem; }
+a.rubrique:hover { border-color:var(--accent); }
+a.rubrique b { font-family:"Marcellus",Georgia,serif; font-weight:400; font-size:1.15rem; color:var(--accent); display:block; margin-bottom:.25rem; }
+a.rubrique span { color:var(--muted); font-size:.9rem; }
+.etapes { list-style:none; counter-reset:etape; padding:0; margin:0; display:grid; gap:.6rem; }
+.etapes li { counter-increment:etape; position:relative; background:var(--surface); border:1px solid var(--line-strong);
+  border-radius:3px; padding-block:.9rem; padding-inline:3.4rem 1.1rem; }
+.etapes li::before { content:counter(etape); position:absolute; inset-inline-start:1.1rem; top:.8rem;
+  font-family:"Marcellus",Georgia,serif; font-size:1.4rem; color:var(--laiton); }
+.etapes li p { margin:.25rem 0 0; color:var(--muted); }
+.lexique { display:grid; gap:.5rem 1.2rem; grid-template-columns:repeat(auto-fit,minmax(16rem,1fr)); margin:0; }
+.lexique div { border-top:1px solid var(--line); padding-top:.6rem; }
+.lexique dt { font-weight:600; }
+.lexique dd { margin:.2rem 0 0; color:var(--muted); font-size:.9rem; }
+h2:focus { outline:none; }
+
+/* ————— petits écrans ————— */
+@media (max-width:640px) {
+  main { padding:1.2rem 1rem 2rem; }
+  .banc { padding:.5rem 1rem .6rem; }
+  .notif { left:1rem; right:1rem; transform:none; max-width:none; }
+  .sas .enveloppe, .lecture { padding:1.3rem 1.1rem; }
+}
+
+/* ————— arabe : sens de lecture et typographie ————— */
+/* Les capitales forcées et l'espacement des lettres cassent la liaison des
+   lettres arabes : on les neutralise, et on choisit des polices dédiées. */
+:lang(ar) body, :lang(ar) button, :lang(ar) input, :lang(ar) select, :lang(ar) textarea {
+  font-family:"Tajawal","Noto Sans Arabic","Segoe UI",system-ui,sans-serif;
+}
+:lang(ar) body { font-size:16px; line-height:1.8; }
+:lang(ar) h1, :lang(ar) h2, :lang(ar) .statut .v, :lang(ar) a.rubrique b,
+:lang(ar) .sas .note, :lang(ar) .etapes li::before { font-family:"Amiri","Noto Naskh Arabic",Georgia,serif; }
+:lang(ar) .carte-titre, :lang(ar) label .l, :lang(ar) .statut .l, :lang(ar) .etiq, :lang(ar) .chip,
+:lang(ar) .banc-tete b, :lang(ar) .banc-lib, :lang(ar) .surtitre {
+  font-family:"Tajawal","Noto Sans Arabic",system-ui,sans-serif; letter-spacing:0; text-transform:none;
+}
+:lang(ar) .carte-titre, :lang(ar) label .l, :lang(ar) .statut .l, :lang(ar) .surtitre { font-size:.85rem; font-weight:700; }
+:lang(ar) .etiq, :lang(ar) .chip { font-size:.78rem; }
+[dir="rtl"] .barre nav a.externe::after { content:" ↖"; }
+:lang(ar) .langues button:not([lang="ar"]) { font-family:"Instrument Sans",system-ui,sans-serif; }
+:lang(ar) .banc-tete #banc-date, :lang(ar) .journal .q { font-family:"Tajawal","Noto Sans Arabic",system-ui,sans-serif; letter-spacing:0; }

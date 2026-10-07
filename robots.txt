@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://hbakkaoui-hash.github.io/testament-site/sitemap.xml
